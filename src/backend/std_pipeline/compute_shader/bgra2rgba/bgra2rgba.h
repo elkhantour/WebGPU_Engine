@@ -43,7 +43,7 @@ static const WGPUBindGroupLayoutDescriptor bgra2rgba_bind_group = {
 
 static const ComputePipelineStateObject layout_bgra2rgba = {
     .label = "Compute Pipeline Bind Groups - bgra2rgba",
-    .shader_path = RESOURCES_PATH_SHADER(bgra2rgba.wgsl),
+    .shader_path = RESOURCES_PATH_SHADER(bgra2rgba/bgra2rgba.wgsl),
     .bind_groups_count = 1,
     .bind_groups = {&bgra2rgba_bind_group},
 };

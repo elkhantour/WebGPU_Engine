@@ -53,7 +53,7 @@ static const WGPUBindGroupLayoutDescriptor colormap_bind_group = {
 
 static const ComputePipelineStateObject layout_colormap = {
     .label = "Compute Pipeline Bind Groups - colormap layout",
-    .shader_path = RESOURCES_PATH_SHADER(colormap.wgsl),
+    .shader_path = RESOURCES_PATH_SHADER(colormap/colormap.wgsl),
     .bind_groups_count = 1,
     .bind_groups = {&colormap_bind_group},
 };

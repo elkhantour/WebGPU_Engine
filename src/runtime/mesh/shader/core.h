@@ -20,8 +20,8 @@ Shader *mesh_shader(Mesh *, const MeshShader);
 
 void mesh_set_shader(Mesh *, const MeshShader, Shader *);
 
-void mesh_shader_build_mvp(Mesh *, const MeshShader, UBOManager *);
-void mesh_shader_build_mp(Mesh *, const MeshShader, UBOManager *,
+void mesh_shader_bind_mvp(Mesh *, const MeshShader, UBOManager *);
+void mesh_shader_bind_mp(Mesh *, const MeshShader, UBOManager *,
                           const UBOType);
 
 EXTERN_C_END

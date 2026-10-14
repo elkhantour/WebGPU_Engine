@@ -37,7 +37,7 @@ EXTERN_C_BEGIN
 
 void selection_system_init(SceneSelection *, Scene *, Renderer *);
 
-void selection_system_draw_callback(Renderer *, void *);
+void selection_system_draw_callback(void *);
 
 void selection_system_toggle_mesh(SceneSelection *, Scene *, Renderer *,
                                   Mesh *);

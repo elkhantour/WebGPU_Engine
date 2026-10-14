@@ -65,10 +65,12 @@ void selection_system_init(SceneSelection *selection, Scene *scene,
     According to those checkes we then transform the meshes.
 
  */
-void selection_system_draw_callback(Renderer *renderer, void *data) {
+void selection_system_draw_callback(void *data) {
 
-  Scene *scene = ((SelectionSystemCallbackData *)data)->scene;
-  SceneSelection *selection = ((SelectionSystemCallbackData *)data)->selection;
+  SelectionSystemCallbackData *payload = (SelectionSystemCallbackData *)data;
+  Scene *scene = payload->scene;
+  SceneSelection *selection = payload->selection;
+  Renderer *renderer = payload->renderer;
   Gizmo *gizmo = &scene->gizmo;
 
   if (gizmo->cache.init_distance != 0.0f) {

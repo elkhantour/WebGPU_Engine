@@ -56,7 +56,7 @@ void gui_destroy(Gui *);
 // the scene editor. The approach should rather be: Scene Editor is a KIND of
 // GUI. Same for the components, they should be under the scene editor
 // directory, not gui
-void gui_draw_callback(Renderer *, void *);
+void gui_draw_callback(void *);
 
 void gui_create_color_texture(const uint32_t, const uint32_t, WGPUTexture *,
                               WGPUTextureView *);

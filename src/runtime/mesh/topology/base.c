@@ -16,9 +16,9 @@ static void mesh_topology_base_create_anchor(MeshTopologyBase *);
 /**
    Handle the base topology creation as well as anchor generation
  */
-void mesh_topology_base_create(MeshTopologyBase *base,
-                               const VertexAttribute *va,
-                               const VertexIndex *vi) {
+MeshTopologyBaseStatus mesh_topology_base_create(MeshTopologyBase *base,
+                                                 const VertexAttribute *va,
+                                                 const VertexIndex *vi) {
 
   // create vertex attributes
   mesh_topology_base_create_vertex_attribute(base, va);
@@ -28,6 +28,54 @@ void mesh_topology_base_create(MeshTopologyBase *base,
 
   // create anchors
   mesh_topology_base_create_anchor(base);
+
+  return MeshTopologyBaseStatus_Success;
+}
+
+MeshTopologyBaseStatus mesh_topology_base_upload(MeshTopologyBase *base) {
+
+  if (!base->attribute.count || !base->index.count) {
+    logger_add(LoggerFlag_Error,
+               "Attempting to upload empty vertices buffers.");
+    return MeshTopologyBaseStatus_Empty;
+  }
+
+  {
+    // vert attribute upload
+    if (base->attribute.buffer != NULL)
+      rem_destroy_buffer(&base->attribute.buffer);
+
+    const size_t va_size = base->attribute.count * sizeof(vattr_t);
+
+    base->attribute.buffer = rem_new_buffer(&(WGPUBufferDescriptor){
+        .label = "Base Topology Vertex Attributes",
+        .mappedAtCreation = false,
+        .size = va_size,
+        .usage = WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst,
+    });
+
+    rem_write_buffer(base->attribute.buffer, 0, (void *)base->attribute.entries,
+                     va_size, REMWriteFlag_None);
+  }
+
+  {
+    // vert index upload
+    if (base->index.buffer != NULL)
+      rem_destroy_buffer(&base->index.buffer);
+
+    const size_t vi_size = base->index.count * sizeof(vindex_t);
+
+    base->index.buffer = rem_new_buffer(&(WGPUBufferDescriptor){
+        .label = "BoundBox Topology Vertex Indexes",
+        .mappedAtCreation = false,
+        .size = vi_size,
+        .usage = WGPUBufferUsage_Index | WGPUBufferUsage_CopyDst,
+    });
+
+    rem_write_buffer(base->index.buffer, 0, (void *)base->index.entries,
+                     vi_size, REMWriteFlag_None);
+  }
+  return MeshTopologyBaseStatus_Success;
 }
 
 /**
@@ -47,10 +95,6 @@ MeshTopologyBaseStatus
 mesh_topology_base_create_vertex_attribute(MeshTopologyBase *base,
                                            const VertexAttribute *va) {
 
-  // reset buffer
-  if (base->attribute.buffer)
-    rem_destroy_buffer(&base->attribute.buffer);
-
   base->attribute.count = va->count;
   base->attribute.capacity = va->capacity;
 
@@ -58,22 +102,6 @@ mesh_topology_base_create_vertex_attribute(MeshTopologyBase *base,
   size_t vattr_size = va->capacity * sizeof(vattr_t);
   base->attribute.entries = calloc(va->capacity, sizeof(vattr_t));
   memcpy(base->attribute.entries, va->entries, vattr_size);
-
-  if (base->attribute.count) {
-    const size_t va_size = base->attribute.count * sizeof(vattr_t);
-
-    base->attribute.buffer = rem_new_buffer(&(WGPUBufferDescriptor){
-        .label = "Base Topology Vertex Attributes",
-        .mappedAtCreation = false,
-        .size = va_size,
-        .usage = WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst,
-    });
-
-    rem_write_buffer(base->attribute.buffer, 0, (void *)base->attribute.entries,
-                     va_size, REMWriteFlag_None);
-
-    return MeshTopologyBaseStatus_Success;
-  }
 
   return MeshTopologyBaseStatus_Empty;
 }
@@ -85,32 +113,12 @@ MeshTopologyBaseStatus
 mesh_topology_base_create_vertex_index(MeshTopologyBase *base,
                                        const VertexIndex *vi) {
 
-  // reset buffer
-  if (base->index.buffer)
-    rem_destroy_buffer(&base->index.buffer);
-
   base->index.count = vi->count;
   base->index.capacity = vi->capacity;
 
   const size_t vi_capacity = vi->capacity * sizeof(vindex_t);
   base->index.entries = calloc(vi->capacity, sizeof(vindex_t));
   memcpy(base->index.entries, vi->entries, vi_capacity);
-
-  if (base->index.count) {
-    const size_t vi_size = base->index.count * sizeof(vindex_t);
-
-    base->index.buffer = rem_new_buffer(&(WGPUBufferDescriptor){
-        .label = "BoundBox Topology Vertex Indexes",
-        .mappedAtCreation = false,
-        .size = vi_size,
-        .usage = WGPUBufferUsage_Index | WGPUBufferUsage_CopyDst,
-    });
-
-    rem_write_buffer(base->index.buffer, 0, (void *)base->index.entries,
-                     vi_size, REMWriteFlag_None);
-
-    return MeshTopologyBaseStatus_Success;
-  }
 
   return MeshTopologyBaseStatus_Empty;
 }

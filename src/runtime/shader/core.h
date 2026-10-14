@@ -11,6 +11,7 @@
 #include "runtime/pipeline/pipeline.h"
 #include "runtime/pipeline/render.h"
 #include "utils/defines.h"
+#include "utils/name.h"
 #include "webgpu/webgpu.h"
 
 // commons
@@ -296,7 +297,7 @@ typedef struct {
 
 // core
 typedef struct {
-  char *name;
+  name_t name;
   reg_id_t id;
   // pipelines
   RenderPipeline *const *pipeline;

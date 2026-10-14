@@ -1,6 +1,7 @@
 #ifndef _ENGINE_CORE_H_
 #define _ENGINE_CORE_H_
 
+#include "backend/job_system.h"
 #include "backend/renderer/core.h"
 #include "runtime/gui/core.h"
 #include "runtime/light/core.h"
@@ -39,6 +40,7 @@ typedef enum {
 typedef struct {
 
   Renderer *renderer;
+  JobSystem *job_system;
   Gui *gui;
 
   struct {

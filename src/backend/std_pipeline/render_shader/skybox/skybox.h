@@ -65,7 +65,7 @@ static const WGPUDepthStencilState skybox_stencil = {
 
 static const RenderPipelineStateObject layout_skybox = {
     .label = "Pipeline Bind Groups - Skybox",
-    .shader_path = RESOURCES_PATH_SHADER(skybox.wgsl),
+    .shader_path = RESOURCES_PATH_SHADER(skybox/skybox.wgsl),
     .bind_groups_count = 2,
     .bind_groups = {&mvp_layout, &skybox_layout_bind_group},
     .pipeline_attributes =

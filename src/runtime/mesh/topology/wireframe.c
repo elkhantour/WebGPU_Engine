@@ -100,8 +100,9 @@ static void mesh_topology_wireframe_create_points(EdgeHashSet *,
    on unique edges, which doesn't include all the base index topology.
 
  */
-int mesh_topology_wireframe_create(MeshTopology *src_topo,
-                                   MeshTopologyWireframe *dest_topo) {
+MeshTopologyWireframeStatus
+mesh_topology_wireframe_create(MeshTopology *src_topo,
+                               MeshTopologyWireframe *dest_topo) {
 
   // reset existing wireframe buffer if exists
   // DELETEME:
@@ -146,8 +147,7 @@ int mesh_topology_wireframe_create(MeshTopology *src_topo,
                                    MESH_TOPOLOGY_ANCHOR_LIST_DEFAULT_CAPACITY);
 
   // create mapped anchor list
-  mesh_topology_anchor_list_create(&dest_topo->anchors,
-                                   src_topo->index->count);
+  mesh_topology_anchor_list_create(&dest_topo->anchors, src_topo->index->count);
 
   // create points from unique edges
   mesh_topology_wireframe_create_points(&edges, &hashed_anchors, src_topo,
@@ -156,36 +156,52 @@ int mesh_topology_wireframe_create(MeshTopology *src_topo,
   // map wireframe index cluster based on base topology index
   mesh_topology_anchor_list_map(&hashed_anchors, src_topo, &dest_topo->anchors);
 
+  return MeshTopologyWireframeStatus_Success;
+}
+
+/**
+ * Create and populate buffer for the given data
+ * We can't create buffer or any related GPU work on the create function
+ * Cause the wireframe use multithreading and webgpu use the main thread
+ * to manage resource lifecycle.
+ */
+MeshTopologyWireframeStatus
+mesh_topology_wireframe_upload(MeshTopologyWireframe *topo) {
+
   {
     // upload vertex attributes
-    const size_t va_size = dest_topo->attribute.count * sizeof(vattr_t);
+    if (topo->attribute.buffer != NULL)
+      rem_destroy_buffer(&topo->attribute.buffer);
 
-    dest_topo->attribute.buffer = rem_new_buffer(&(WGPUBufferDescriptor){
+    const size_t va_size = topo->attribute.count * sizeof(vattr_t);
+
+    topo->attribute.buffer = rem_new_buffer(&(WGPUBufferDescriptor){
         .label = "Wireframe Topology Vertex Attributes",
         .mappedAtCreation = false,
         .size = va_size,
         .usage = WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst,
     });
 
-    rem_write_buffer(dest_topo->attribute.buffer, 0,
-                     (void *)dest_topo->attribute.entries, va_size,
-                     REMWriteFlag_None);
+    rem_write_buffer(topo->attribute.buffer, 0, (void *)topo->attribute.entries,
+                     va_size, REMWriteFlag_None);
   }
 
   {
     // upload vertex index
-    const size_t vi_size = dest_topo->index.count * sizeof(vindex_t);
+    if (topo->index.buffer != NULL)
+      rem_destroy_buffer(&topo->index.buffer);
 
-    dest_topo->index.buffer = rem_new_buffer(&(WGPUBufferDescriptor){
+    const size_t vi_size = topo->index.count * sizeof(vindex_t);
+
+    topo->index.buffer = rem_new_buffer(&(WGPUBufferDescriptor){
         .label = "Wireframe Topology Vertex Indexes",
         .mappedAtCreation = false,
         .size = vi_size,
         .usage = WGPUBufferUsage_Index | WGPUBufferUsage_CopyDst,
     });
 
-    rem_write_buffer(dest_topo->index.buffer, 0,
-                     (void *)dest_topo->index.entries, vi_size,
-                     REMWriteFlag_None);
+    rem_write_buffer(topo->index.buffer, 0, (void *)topo->index.entries,
+                     vi_size, REMWriteFlag_None);
   }
 
   return MeshTopologyWireframeStatus_Success;

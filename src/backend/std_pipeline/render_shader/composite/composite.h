@@ -62,7 +62,7 @@ static const WGPUBindGroupLayoutDescriptor composite_bind_group_layout = {
 
 static const RenderPipelineStateObject layout_composite = {
     .label = "Composite pass",
-    .shader_path = RESOURCES_PATH_SHADER(composite.wgsl),
+    .shader_path = RESOURCES_PATH_SHADER(composite/composite.wgsl),
     .bind_groups_count = 1,
     .bind_groups = {&composite_bind_group_layout},
     .pipeline_attributes =

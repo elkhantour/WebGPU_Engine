@@ -213,9 +213,20 @@ engine_scene_add_probe_reflection_plane(Engine *engine,
   Renderer *renderer = engine_get_renderer(engine);
 
   // add draw callback if first probe
-  if (scene->probes.reflection_plane.count == 0)
+  if (scene->probes.reflection_plane.count == 0) {
+
+    // TODO: FREE RESOURCE
+    RendererDrawPlaneRelfectionData *data =
+        calloc(1, sizeof(RendererDrawPlaneRelfectionData));
+
+    if (data != NULL) {
+      data->list = &scene->probes.reflection_plane;
+      data->renderer = renderer;
+    }
+
     renderer_add_draw_callback(renderer, renderer_draw_plane_reflection,
-                               (void *)scene, RendererDrawMode_Texture);
+                               (void *)data, RendererDrawMode_Texture);
+  }
 
   SceneEditorMeshList *sem_list =
       scene_add_probe_reflection_plane(scene, desc, dest);

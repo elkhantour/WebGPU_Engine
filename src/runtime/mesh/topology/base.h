@@ -29,8 +29,10 @@ EXTERN_C_BEGIN
 
 MeshTopology mesh_topology_base_vertex(MeshTopologyBase *);
 
-void mesh_topology_base_create(MeshTopologyBase *, const VertexAttribute *,
+MeshTopologyBaseStatus mesh_topology_base_create(MeshTopologyBase *, const VertexAttribute *,
                                const VertexIndex *);
+
+MeshTopologyBaseStatus mesh_topology_base_upload(MeshTopologyBase *);
 
 MeshTopologyBaseStatus
 mesh_topology_base_create_vertex_attribute(MeshTopologyBase *,

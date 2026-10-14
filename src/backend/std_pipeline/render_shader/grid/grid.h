@@ -39,7 +39,7 @@ static const WGPUDepthStencilState grid_stencil = {
 
 static const RenderPipelineStateObject layout_grid = {
     .label = "Pipeline Bind Groups - Grid",
-    .shader_path = RESOURCES_PATH_SHADER(grid.wgsl),
+    .shader_path = RESOURCES_PATH_SHADER(grid/grid.wgsl),
     .bind_groups_count = 2,
     .bind_groups = {&mvp_layout, &grid_bind_group},
     .pipeline_attributes =

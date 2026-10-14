@@ -24,7 +24,11 @@ typedef struct {
 
 EXTERN_C_BEGIN
 
-int mesh_topology_wireframe_create(MeshTopology *, MeshTopologyWireframe *);
+MeshTopologyWireframeStatus
+mesh_topology_wireframe_create(MeshTopology *, MeshTopologyWireframe *);
+
+MeshTopologyWireframeStatus
+mesh_topology_wireframe_upload(MeshTopologyWireframe *);
 
 MeshTopology mesh_topology_wireframe_vertex(MeshTopologyWireframe *);
 

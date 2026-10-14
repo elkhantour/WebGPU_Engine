@@ -37,6 +37,7 @@
   _(Texture)                                                                   \
   _(Shader)                                                                    \
   _(Ubo)                                                                       \
+  _(JobSystem)                                                                 \
   _(Renderer)                                                                  \
   _(WGPUObject)
 

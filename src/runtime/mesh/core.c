@@ -38,8 +38,10 @@ void mesh_create(Mesh *mesh, const MeshCreateDescriptor *md) {
   mesh->children.entries = NULL;
 
   // set vertices & index for base topology
-  if (md->vertex.count > 0 && md->index.count)
+  if (md->vertex.count > 0 && md->index.count > 0) {
     mesh_topology_base_create(&mesh->topology.base, &md->vertex, &md->index);
+    mesh_topology_base_upload(&mesh->topology.base);
+  }
 
   // init model matrix and transforms
   glm_mat4_identity(mesh->model);

@@ -1,5 +1,6 @@
 #include "loader.gltf.h"
 
+#include "backend/job_system.h"
 #include "backend/resource_manager.h"
 #include "runtime/engine/add.h"
 #include "runtime/systems/scene_system.h"
@@ -30,6 +31,7 @@
 #include "runtime/shader/core.h"
 #include "runtime/shader/update.h"
 #include "runtime/texture/core.h"
+#include "utils/dyli.h"
 #include "utils/name.h"
 #include "webgpu/webgpu.h"
 
@@ -42,60 +44,105 @@
 #define CGLTF_IMPLEMENTATION
 #include "cgltf/cgltf.h"
 
-// gltf utils
-static float *loader_gltf_attributes(const cgltf_accessor *);
+typedef struct {
+  cgltf_data *data;
+  int pending;
+} LoaderGLTFContext;
 
-static inline void
-loader_gltf_set_attribute_fallback(float *, const float *,
-                                   const VertexAttributeDimension);
-static inline bool
-loader_gltf_attribute_is_empty(const float *, const VertexAttributeDimension);
+typedef struct {
+  uint16_t mesh_index;
+
+  cgltf_mesh *gltf_mesh;
+  cgltf_node *gltf_node;
+  cgltf_primitive gltf_primitive;
+  cgltf_material *gltf_material;
+
+  const LoaderGLTFOptions *options;
+  LoaderGLTFResult *result;
+  LoaderGLTFContext *context;
+
+  Engine *engine;
+  Mesh *parent;
+
+  Mesh *out_mesh;
+  VertexAttribute out_vertex_attribute;
+  VertexIndex out_vertex_index;
+} MeshLoadJob;
+
+// gltf utils
+static float *get_attributes(const cgltf_accessor *);
+
+static inline void set_attribute_fallback(float *, const float *,
+                                          const VertexAttributeDimension);
+static inline bool attribute_is_empty(const float *,
+                                      const VertexAttributeDimension);
+
+// context
+static void ctx_release(LoaderGLTFContext *ctx) {
+  if (--ctx->pending > 0)
+    return;
+  
+  cgltf_free(ctx->data);
+  free(ctx);
+}
 
 // vertex buffer utils
-static void loader_gltf_primitive_vertex_index(VertexIndex *,
-                                               cgltf_primitive *);
+static void primitive_vertex_index(VertexIndex *, cgltf_primitive *);
 
-static inline void
-loader_gltf_primitive_vertex_attribute_create(VertexAttribute *,
-                                              cgltf_primitive *);
-static inline void loader_gltf_primitie_vertex_lists_init(VertexAttribute *,
-                                                          size_t);
+static inline void primitive_vertex_attribute_create(VertexAttribute *,
+                                                     cgltf_primitive *);
+static inline void primitive_vertex_lists_init(VertexAttribute *, size_t);
 
 // mesh utils
-static inline LoaderGLTFStatus
-loader_gltf_traverse_nodes(cgltf_data *, Engine *, const LoaderGLTFOptions *,
-                           LoaderGLTFResult *);
-static inline LoaderGLTFStatus
-loader_gltf_create_mesh(Engine *, cgltf_node *, Mesh *,
-                        const LoaderGLTFOptions *, LoaderGLTFResult *);
-static inline void loader_gltf_mesh_position(cgltf_node *, Mesh *);
+static inline LoaderGLTFStatus traverse_nodes(LoaderGLTFContext *, Engine *,
+                                              const LoaderGLTFOptions *,
+                                              LoaderGLTFResult *);
+
+static inline LoaderGLTFStatus create_mesh(LoaderGLTFContext *, Engine *,
+                                           cgltf_node *, Mesh *,
+                                           const LoaderGLTFOptions *,
+                                           LoaderGLTFResult *);
+
+static inline void mesh_position(cgltf_node *, Mesh *);
+
+static void mesh_load_worker_start(void *);
+static void mesh_load_worker_done(void *);
 
 // shader utils
-static inline void loader_gltf_bind_textures(Mesh *, cgltf_material *,
-                                             const LoaderGLTFOptions *);
+static inline void bind_textures(Mesh *, cgltf_material *,
+                                 const LoaderGLTFOptions *);
 
-static inline void loader_gltf_bind_uniforms(Mesh *, cgltf_material *,
-                                             const LoaderGLTFOptions *);
+static inline void bind_uniforms(Mesh *, cgltf_material *,
+                                 const LoaderGLTFOptions *);
 
-static LoaderGLTFStatus
-loader_gltf_extract_texture(cgltf_texture_view *, void **, size_t *, int *,
-                            int *, int *, TextureResolution, const char *);
+static LoaderGLTFStatus extract_texture(cgltf_texture_view *, void **, size_t *,
+                                        int *, int *, int *, TextureResolution,
+                                        const char *);
 
 LoaderGLTFStatus loader_gltf_load(const GLTFLoadDescriptor *desc,
                                   LoaderGLTFResult *dest) {
 
   logger_add(LoggerFlag_Import, "GLTF file: %s", desc->path);
 
-  cgltf_data *data = NULL;
+  LoaderGLTFContext *ctx = calloc(1, sizeof(LoaderGLTFContext));
   cgltf_result result;
 
   // load json structure
-  TIMER("GLTF Parse file",
-        { result = cgltf_parse_file(desc->cgltf_options, desc->path, &data); });
+  TIMER("GLTF Parse file", {
+    result = cgltf_parse_file(desc->cgltf_options, desc->path, &ctx->data);
+  });
+
+  if (ctx->data == NULL) {
+    logger_add(
+        LoggerFlag_Error,
+        "GLTF file data unabled to be passed, make sure the file exists: %s.",
+        desc->path);
+    return LoaderGLTFStatus_FileUnfound;
+  }
 
   // load actual gltf buffer data
   TIMER("GLTF Load Buffer", {
-    result = cgltf_load_buffers(desc->cgltf_options, data, desc->path);
+    result = cgltf_load_buffers(desc->cgltf_options, ctx->data, desc->path);
   });
 
   if (dest)
@@ -109,7 +156,7 @@ LoaderGLTFStatus loader_gltf_load(const GLTFLoadDescriptor *desc,
     break;
 
   case cgltf_result_success:
-    return loader_gltf_traverse_nodes(data, desc->engine, desc->options, dest);
+    return traverse_nodes(ctx, desc->engine, desc->options, dest);
     break;
 
   case cgltf_result_file_not_found:
@@ -125,19 +172,17 @@ LoaderGLTFStatus loader_gltf_load(const GLTFLoadDescriptor *desc,
     return LoaderGLTFStatus_UndefError;
   }
 
-  cgltf_free(data);
-
   return LoaderGLTFStatus_Success;
 }
 
-void loader_gltf_set_attribute_fallback(float *attr, const float *fallback,
-                                        const VertexAttributeDimension count) {
+void set_attribute_fallback(float *attr, const float *fallback,
+                            const VertexAttributeDimension count) {
   for (VertexAttributeDimension i = 0; i < count; i++)
     attr[i] = fallback[i];
 }
 
-bool loader_gltf_attribute_is_empty(const float *attr,
-                                    const VertexAttributeDimension count) {
+bool attribute_is_empty(const float *attr,
+                        const VertexAttributeDimension count) {
 
   for (VertexAttributeDimension i = 0; i < count; i++)
     if (attr[i])
@@ -146,20 +191,159 @@ bool loader_gltf_attribute_is_empty(const float *attr,
   return true;
 }
 
-LoaderGLTFStatus loader_gltf_traverse_nodes(cgltf_data *data, Engine *engine,
-                                            const LoaderGLTFOptions *options,
-                                            LoaderGLTFResult *result) {
+void mesh_load_worker_start(void *data) {
 
-  for (size_t i = 0; i < data->nodes_count; i++) {
-    cgltf_node *node = &data->nodes[i];
+  MeshLoadJob *job = (MeshLoadJob *)data;
+
+  cgltf_primitive primitive = job->gltf_primitive;
+  cgltf_material *material = job->gltf_material;
+  cgltf_mesh *gltf_mesh = job->gltf_mesh;
+  cgltf_node *gltf_node = job->gltf_node;
+
+  Mesh *mesh = job->out_mesh;
+  Mesh *parent = job->parent;
+  Engine *engine = job->engine;
+  uint16_t mesh_index = job->mesh_index;
+
+  VertexAttribute *vert_attr = &job->out_vertex_attribute;
+  VertexIndex *vert_index = &job->out_vertex_index;
+
+  const LoaderGLTFOptions *options = job->options;
+  LoaderGLTFResult *result = job->result;
+
+  // get accessors to decode buffers into typed data (vertex, indices...)
+  // load vertex attributes
+
+  /*
+    GLTF PRIMITIVES
+    primitives are vertices that belong to a same mesh but have different
+    material/shader.
+    In the current case we separate the primitives into mesh
+    children maybe in the future we will need to create a dedicated array.
+
+    Hierarchy:
+    .-----------------------------------.
+    | (parent mesh)                     |
+    |  .-----------------------------.  |
+    |  | primitive[0]                |  |
+    |  |  .-----------------------.  |  |
+    |  |  |  primitive[n > 0]     |  |  |
+    |  |  '-----------------------'  |  |
+    |  '-----------------------------'  |
+    '-----------------------------------'
+
+    TODO :
+    For now we include primitives as child along with the other child meshes.
+    But maybe in the future it could be useful to put them under a primitive
+    array.
+  */
+
+  // Initialize vertex lists with 0.0:
+  // need fallback values in case no color or uv coordinates
+  // ensure to maintain correct standaridzed structure for shaders
+  {
+    const size_t vertex_count =
+        primitive.attributes[0].data->count * VERTEX_STRIDE;
+
+    primitive_vertex_lists_init(vert_attr, vertex_count);
+    primitive_vertex_attribute_create(vert_attr, &primitive);
+    primitive_vertex_index(vert_index, &primitive);
+  }
+
+  name_t mesh_name;
+  name_copy(gltf_mesh->name, mesh_name);
+
+  if (mesh_index > 0)
+    name_compose(mesh_name, "%s.%lu", gltf_mesh->name, mesh_index);
+
+  mesh_create(mesh, &(MeshCreateDescriptor){
+                        .name = mesh_name,
+                        .vertex = (VertexAttribute){0},
+                        .index = (VertexIndex){0},
+                    });
+
+  mesh_topology_base_create(&mesh->topology.base, &job->out_vertex_attribute,
+                            &job->out_vertex_index);
+
+  if (parent)
+    mesh_child_add(parent, mesh);
+
+  mesh_position(gltf_node, mesh);
+  job->out_mesh = mesh;
+
+  // ==== UPDATE STATS ===
+  {
+    if (result) {
+      result->stats.mesh_count++;
+      result->stats.vertex_count +=
+          mesh->topology.base.attribute.count / VERTEX_STRIDE;
+
+      if (result->meshes.count < LOADER_GLTF_RESULT_MESH_COUNT)
+        result->meshes.entries[result->meshes.count++] = mesh;
+    }
+  }
+}
+
+/**
+ * On done, handle the GPU part (bind textures...) and add to engine scene
+ */
+void mesh_load_worker_done(void *data) {
+
+  MeshLoadJob *job = (MeshLoadJob *)data;
+
+  Mesh *mesh = job->out_mesh;
+  VertexAttribute *vert_attr = &job->out_vertex_attribute;
+  VertexIndex *vert_index = &job->out_vertex_index;
+
+  Engine *engine = job->engine;
+
+  LoaderGLTFContext *ctx = job->context;
+  const LoaderGLTFOptions *options = job->options;
+  cgltf_material *material = job->gltf_material;
+
+  // define mesh vertex attribute
+  mesh_topology_base_upload(&mesh->topology.base);
+
+  // Use default pbr shader as default
+  // TODO: Add a custom path for different shader in loader configuration
+
+  RenderPipelineType pipeline_type = RenderPipelineType_PBR;
+
+  if (material->double_sided)
+    pipeline_type = RenderPipelineType_PBR_DoubleSided;
+
+  if (material->alpha_mode == cgltf_alpha_mode_blend)
+    pipeline_type = RenderPipelineType_PBR_Alpha;
+
+  mesh_shader_create(mesh, &(ShaderCreateDescriptor){
+                               .pipeline = std_render_pipeline(pipeline_type),
+                               .name = material->name,
+                           });
+
+  // load and bind gltf textures
+  bind_textures(mesh, material, options);
+  bind_uniforms(mesh, material, options);
+
+  engine_scene_add_mesh(engine, mesh, NULL, EngineAddFlag_None);
+
+  free(data);
+  ctx_release(ctx);
+}
+
+LoaderGLTFStatus traverse_nodes(LoaderGLTFContext *ctx, Engine *engine,
+                                const LoaderGLTFOptions *options,
+                                LoaderGLTFResult *result) {
+
+  for (size_t i = 0; i < ctx->data->nodes_count; i++) {
+    cgltf_node *node = &ctx->data->nodes[i];
     if (node->mesh)
-      loader_gltf_create_mesh(engine, node, NULL, options, result);
+      create_mesh(ctx, engine, node, NULL, options, result);
   }
 
   return LoaderGLTFStatus_Success;
 }
 
-float *loader_gltf_attributes(const cgltf_accessor *accessor) {
+float *get_attributes(const cgltf_accessor *accessor) {
 
   cgltf_buffer_view *buffer_view = accessor->buffer_view;
 
@@ -168,8 +352,7 @@ float *loader_gltf_attributes(const cgltf_accessor *accessor) {
   return (float *)((uint8_t *)buffer_view->buffer->data + offset);
 }
 
-void loader_gltf_primitive_vertex_lists_init(VertexAttribute *attributes,
-                                             size_t count) {
+void primitive_vertex_lists_init(VertexAttribute *attributes, size_t count) {
   attributes->count = count;
   attributes->capacity = attributes->count;
   attributes->entries =
@@ -184,8 +367,8 @@ void loader_gltf_primitive_vertex_lists_init(VertexAttribute *attributes,
    etc.
  */
 static inline void
-loader_gltf_primitive_vertex_attribute_create(VertexAttribute *vert_attr,
-                                              cgltf_primitive *primitive) {
+primitive_vertex_attribute_create(VertexAttribute *vert_attr,
+                                  cgltf_primitive *primitive) {
 
   const struct {
     const cgltf_attribute_type gltf_attribute;
@@ -235,7 +418,7 @@ loader_gltf_primitive_vertex_attribute_create(VertexAttribute *vert_attr,
     const cgltf_accessor *accessor = attribute->data;
     const cgltf_attribute_type gltf_type = attribute->type;
 
-    float *data = loader_gltf_attributes(accessor);
+    float *data = get_attributes(accessor);
 
     for (size_t i = 0; i < VERTEX_ATTRIBUTE_COUNT; i++) {
 
@@ -262,15 +445,14 @@ loader_gltf_accessor_to_array(const cgltf_accessor *accessor,
                               float *destination,
                               const VertexAttributeDimension dimension) {
 
-  float *attributes = loader_gltf_attributes(accessor);
+  float *attributes = get_attributes(accessor);
   size_t index = 0;
   for (size_t a = 0; a < accessor->count; a++)
     for (uint8_t u = 0; u < dimension; u++)
       destination[index++] = attributes[a * dimension + u];
 }
 
-void loader_gltf_primitive_vertex_index(VertexIndex *vert_index,
-                                        cgltf_primitive *source) {
+void primitive_vertex_index(VertexIndex *vert_index, cgltf_primitive *source) {
 
   // index
   cgltf_accessor *index_accessor = source->indices;
@@ -294,136 +476,38 @@ void loader_gltf_primitive_vertex_index(VertexIndex *vert_index,
   };
 }
 
-LoaderGLTFStatus loader_gltf_create_mesh(Engine *engine, cgltf_node *gl_node,
-                                         Mesh *parent,
-                                         const LoaderGLTFOptions *options,
-                                         LoaderGLTFResult *result) {
+LoaderGLTFStatus create_mesh(LoaderGLTFContext *ctx, Engine *engine,
+                             cgltf_node *gl_node, Mesh *parent,
+                             const LoaderGLTFOptions *options,
+                             LoaderGLTFResult *result) {
 
   cgltf_mesh *gl_mesh = gl_node->mesh;
-  Mesh *root_mesh = rem_new_mesh();
-
-  if (parent)
-    mesh_child_add(parent, root_mesh);
-
-  mesh_create(root_mesh, &(MeshCreateDescriptor){
-                             .name = gl_mesh->name,
-                             .vertex = (VertexAttribute){0},
-                             .index = (VertexIndex){0},
-                         });
-
-  /*
-    GLTF PRIMITIVES
-    primitives are vertices that belong to a same mesh but have different
-    material/shader.
-    In the current case we separate the primitives into mesh
-    children maybe in the future we will need to create a dedicated array.
-    primitive 0 = parent, primitive n = child
-
-    TODO :
-    For now we include primitives as child along with the other child meshes.
-    But maybe in the future it could be useful to put them under a primitive
-    array.
-  */
   for (size_t p = 0; p < gl_mesh->primitives_count; p++) {
-    // get accessors to decode buffers into typed data (vertex, indices...)
-    // load vertex attributes
-
-    VertexAttribute vert_attr = {0};
-    VertexIndex vert_index = {0};
 
     cgltf_primitive current_primitive = gl_mesh->primitives[p];
 
-    // Initialize vertex lists with 0.0:
-    // need fallback values in case no color or uv coordinates
-    // ensure to maintain correct standaridzed structure for shaders
+    MeshLoadJob *job = calloc(1, sizeof(*job));
     {
-
-      const size_t vertex_count =
-          current_primitive.attributes[0].data->count * VERTEX_STRIDE;
-
-      loader_gltf_primitive_vertex_lists_init(&vert_attr, vertex_count);
-
-      loader_gltf_primitive_vertex_attribute_create(&vert_attr,
-                                                    &current_primitive);
-      loader_gltf_primitive_vertex_index(&vert_index, &current_primitive);
+      job->gltf_primitive = current_primitive;
+      job->gltf_material = current_primitive.material;
+      job->gltf_mesh = gl_mesh;
+      job->gltf_node = gl_node;
+      job->engine = engine;
+      job->options = options;
+      job->context = ctx;
+      job->result = result;
+      job->parent = parent;
+      job->out_mesh = rem_new_mesh();
+      job->mesh_index = p;
     }
 
-    // target current mesh itself if primitive == 0
-    Mesh *target_mesh = root_mesh;
-
-    // add child to parent mesh if current primitive > 0
-    // and set it as target mesh
-    if (p > 0) {
-      target_mesh = rem_new_mesh();
-      mesh_child_add(root_mesh, target_mesh);
-
-      /*
-        need to dynamically allocate name
-         iteration use same frame stack
-         meaning addresses will be reused throughout the loop
-         this leads the latest mesh name (pointer) -
-         to be shared accross all children mesh
-         (same issue with shader)
-      */
-
-      char mesh_name[NAME_LEN];
-      name_compose(mesh_name, "%s.%lu", gl_mesh->name, p);
-
-      mesh_create(target_mesh, &(MeshCreateDescriptor){
-                                   .name = mesh_name,
-                                   .vertex = (VertexAttribute){0},
-                                   .index = (VertexIndex){0},
-                               });
-    }
-
-    // === CREATE SHADER AND BIND TEXTURE/UNIFORMS
-    {
-      // Use default pbr shader as default
-      // TODO: Add a custom path for different shader in loader configuration
-      cgltf_material *material = current_primitive.material;
-
-      RenderPipelineType pipeline_type = RenderPipelineType_PBR;
-
-      if (material->double_sided)
-        pipeline_type = RenderPipelineType_PBR_DoubleSided;
-
-      if (material->alpha_mode == cgltf_alpha_mode_blend)
-        pipeline_type = RenderPipelineType_PBR_Alpha;
-
-      mesh_shader_create(target_mesh,
-                         &(ShaderCreateDescriptor){
-                             .pipeline = std_render_pipeline(pipeline_type),
-                             .name = material->name,
-                         });
-
-      // load and bind gltf textures
-      loader_gltf_bind_textures(target_mesh, material, options);
-      loader_gltf_bind_uniforms(target_mesh, material, options);
-    }
-
-    loader_gltf_mesh_position(gl_node, target_mesh);
-    // define mesh vertex attribute
-    mesh_topology_base_create(&target_mesh->topology.base, &vert_attr,
-                              &vert_index);
-
-    engine_scene_add_mesh(engine, target_mesh, NULL, EngineAddFlag_None);
-
-    // ==== UPDATE STATS ===
-    {
-      if (result) {
-        result->stats.mesh_count++;
-        result->stats.vertex_count +=
-            target_mesh->topology.base.attribute.count / VERTEX_STRIDE;
-
-        if (result->meshes.count < LOADER_GLTF_RESULT_MESH_COUNT)
-          result->meshes.entries[result->meshes.count++] = target_mesh;
-      }
-    }
-
-    for (size_t i = 0; i < gl_node->children_count; i++)
-      loader_gltf_create_mesh(engine, gl_node->children[i], target_mesh,
-                              options, result);
+    ctx->pending++;
+    job_system_submit(engine->job_system, mesh_load_worker_start,
+                      mesh_load_worker_done, job);
   }
+
+  for (size_t i = 0; i < gl_node->children_count; i++)
+    create_mesh(ctx, engine, gl_node->children[i], parent, options, result);
 
   return LoaderGLTFStatus_Success;
 }
@@ -432,8 +516,8 @@ LoaderGLTFStatus loader_gltf_create_mesh(Engine *engine, cgltf_node *gl_node,
   Bind PBR textures
   store the texture_views (hold pointer to actual texture + other data)
  */
-void loader_gltf_bind_textures(Mesh *mesh, cgltf_material *material,
-                               const LoaderGLTFOptions *options) {
+void bind_textures(Mesh *mesh, cgltf_material *material,
+                   const LoaderGLTFOptions *options) {
 
   const uint8_t texture_count = 5;
 
@@ -487,10 +571,12 @@ void loader_gltf_bind_textures(Mesh *mesh, cgltf_material *material,
     // If find texture, upload new texture to GPU and bind to shader
     //(before freeing it)
     ShaderBindGroupTextureEntry *reflection_texture;
-    if (loader_gltf_extract_texture(
-            texture_view_list[t].gltf_texture, &data, &size, &width, &height,
-            &channels, options->max_texture_size,
-            texture_view_list[t].label) == LoaderGLTFStatus_TextureFound) {
+
+    const LoaderGLTFStatus extracted_texture = extract_texture(
+        texture_view_list[t].gltf_texture, &data, &size, &width, &height,
+        &channels, options->max_texture_size, texture_view_list[t].label);
+
+    if (extracted_texture == LoaderGLTFStatus_TextureFound) {
 
       // send texture + sampler to shader
       reflection_texture =
@@ -532,8 +618,8 @@ void loader_gltf_bind_textures(Mesh *mesh, cgltf_material *material,
 /**
    Read material factors and load it in the PBRUniform
  */
-void loader_gltf_bind_uniforms(Mesh *mesh, cgltf_material *material,
-                               const LoaderGLTFOptions *options) {
+void bind_uniforms(Mesh *mesh, cgltf_material *material,
+                   const LoaderGLTFOptions *options) {
 
   Shader *texture_shader = mesh_shader(mesh, MeshShader_Texture);
   Shader *reflection_shader = mesh_shader(mesh, MeshShader_Reflection);
@@ -576,9 +662,10 @@ void loader_gltf_bind_uniforms(Mesh *mesh, cgltf_material *material,
     1. if uri => load image
     2. if buffer_view => store buffer & size
  */
-LoaderGLTFStatus loader_gltf_extract_texture(
-    cgltf_texture_view *texture_view, void **data, size_t *size, int *width,
-    int *height, int *channels, TextureResolution max_size, const char *label) {
+LoaderGLTFStatus extract_texture(cgltf_texture_view *texture_view, void **data,
+                                 size_t *size, int *width, int *height,
+                                 int *channels, TextureResolution max_size,
+                                 const char *label) {
 
   const TextureChannel forced_channel = TextureChannel_RGBA;
 
@@ -636,9 +723,6 @@ LoaderGLTFStatus loader_gltf_extract_texture(
 
         unsigned char *n_data = malloc(n_w * n_h * forced_channel);
 
-	// DEBUG
-	printf("data: %p | %p, n_data: %p", data, *data, n_data);
-	
         if (n_data == NULL) {
           logger_add(
               LoggerFlag_Warning,
@@ -677,7 +761,7 @@ LoaderGLTFStatus loader_gltf_extract_texture(
   return LoaderGLTFStatus_UndefError;
 }
 
-void loader_gltf_mesh_position(cgltf_node *node, Mesh *mesh) {
+void mesh_position(cgltf_node *node, Mesh *mesh) {
 
   // set translation
   if (node->has_translation)

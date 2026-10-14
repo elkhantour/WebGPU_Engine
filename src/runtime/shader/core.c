@@ -11,6 +11,7 @@
 #include "bindgroup.h"
 #include "runtime/pipeline/render.h"
 #include "string.h"
+#include "utils/name.h"
 
 /*
 
@@ -53,7 +54,7 @@
 void shader_create(Shader *shader, const ShaderCreateDescriptor *sd) {
 
   shader->id = reg_register(shader, RegEntryType_Shader);
-  shader->name = strdup(sd->name);
+  name_copy(sd->name, shader->name);
 
 #ifdef VERBOSE_CREATING_PHASE
   logger_add(LoggerFlag_ShaderCreate, "%s", shader->name);
@@ -72,10 +73,6 @@ void shader_create(Shader *shader, const ShaderCreateDescriptor *sd) {
 }
 
 void shader_destroy(Shader *shader) {
-
-  // clearing name
-  free(shader->name);
-  shader->name = NULL;
 
   // clearing bind groups
   shader_bind_group_clear(shader);

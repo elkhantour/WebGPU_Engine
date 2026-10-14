@@ -1,6 +1,7 @@
 #ifndef _RESOURCE_MANAGER_H_
 #define _RESOURCE_MANAGER_H_
 
+#include "backend/job_system.h"
 #include "backend/logger.h"
 #include "backend/registry.h"
 #include "backend/renderer/core.h"
@@ -50,11 +51,11 @@ typedef enum {
 #define REM_WGPU_ITEM_COUNT 5
 
 #define REM_ENGINE_LIST(_)                                                                                                                                \
-    _(Mesh,                   RegEntryType_Mesh,                    mesh,                        128        ) \
+    _(Mesh,                   RegEntryType_Mesh,                    mesh,                       1024        ) \
     _(Scene,                  RegEntryType_Scene,                   scene,                         2        ) \
     _(RenderPipeline,         RegEntryType_RenderPipeline,          render_pipeline,              64        ) \
     _(ComputePipeline,        RegEntryType_ComputePipeline,         compute_pipeline,            128        ) \
-    _(Shader,                 RegEntryType_Shader,                  shader,                      256        ) \
+    _(Shader,                 RegEntryType_Shader,                  shader,                     1024        ) \
     _(Camera,                 RegEntryType_Camera,                  camera,                       32        ) \
     _(Renderer,               RegEntryType_Renderer,                renderer,                      2        ) \
     _(Gui,                    RegEntryType_Gui,                     gui,                           2        ) \
@@ -65,11 +66,12 @@ typedef enum {
     _(SunLight,               RegEntryType_SunLight,                sun_light,                    32        ) \
     _(ProbeReflectionPlane,   RegEntryType_ProbeReflectionPlane,    plane_reflection,             16        ) \
     _(ProbeReflection,        RegEntryType_ProbeReflection,         probe_reflection,             16        ) \
-    _(ProbeReflectionGrid,    RegEntryType_ProbeReflectionGrid,     probe_reflection_grid,        16        )
+    _(ProbeReflectionGrid,    RegEntryType_ProbeReflectionGrid,     probe_reflection_grid,        16        ) \
+    _(JobSystem,              RegEntryType_JobSystem,               job_system,                    2        ) \
 
 // clang-format on
 
-#define REM_TYPE_COUNT 21
+#define REM_TYPE_COUNT 22
 #define REM_HASH_CAPACITY 2048
 
 // === Generates Type Enums ===

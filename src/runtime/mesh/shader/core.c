@@ -187,7 +187,7 @@ MeshStatus mesh_shader_create(Mesh *mesh, const ShaderCreateDescriptor *desc) {
 
    This function is primarily used when a mesh is firstly added to the scene.
  */
-void mesh_shader_build_mvp(Mesh *mesh, const MeshShader shader_type,
+void mesh_shader_bind_mvp(Mesh *mesh, const MeshShader shader_type,
                            UBOManager *ubo_manager) {
 
   // retrieve the model-view-projection binding index from the pipeline
@@ -234,7 +234,7 @@ void mesh_shader_build_mvp(Mesh *mesh, const MeshShader shader_type,
 
    Build settings mostly used for shadow and reflection shader.
  */
-void mesh_shader_build_mp(Mesh *mesh, const MeshShader shader_type,
+void mesh_shader_bind_mp(Mesh *mesh, const MeshShader shader_type,
                           UBOManager *ubo_manager,
                           const UBOType ubo_view_type) {
 

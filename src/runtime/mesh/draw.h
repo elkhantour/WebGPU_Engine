@@ -1,7 +1,8 @@
 #ifndef _MESH_DRAW_H_
 #define _MESH_DRAW_H_
 
-// Compact mesh data used in draw call to prevent cache miss
+// Compact mesh data used in draw call to improve cache locality and prevent
+// cache miss
 #include "backend/registry.h"
 #include "core.h"
 #include "runtime/pipeline/render.h"
@@ -72,7 +73,7 @@ mesh_draw_packet_list_empty(MeshDrawPacketList *list) {
 }
 
 static inline MeshDrawPacket *
-mesh_draw_packet_list_find_by_mesh(MeshDrawPacketList *list, Mesh *mesh,
+mesh_draw_packet_list_find_mesh(MeshDrawPacketList *list, Mesh *mesh,
                                    size_t *index) {
 
   for (size_t i = 0; i < list->count; i++)

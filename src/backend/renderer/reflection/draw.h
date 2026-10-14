@@ -12,14 +12,22 @@
 #include "runtime/scene/core.h"
 #include "webgpu/webgpu.h"
 
+typedef struct {
+  Renderer *renderer;
+  ProbeReflectionPlaneList *list;
+} RendererDrawPlaneRelfectionData;
+
 EXTERN_C_BEGIN
 
-static inline void renderer_draw_plane_reflection(Renderer *renderer,
-                                                  void *data) {
+static inline void renderer_draw_plane_reflection(void *data) {
 
   // temp
   ProbeReflectionListDebug *debug = NULL;
-  ProbeReflectionPlaneList *list = (ProbeReflectionPlaneList *)data;
+  RendererDrawPlaneRelfectionData *payload =
+      (RendererDrawPlaneRelfectionData *)data;
+
+  Renderer *renderer = payload->renderer;
+  ProbeReflectionPlaneList *list = payload->list;
 
   WGPUTextureView cached_view_color = list->pass.color.attachment.view;
   WGPUTextureView cached_view_depth = list->pass.depth.attachment.view;

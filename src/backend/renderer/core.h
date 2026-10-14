@@ -104,7 +104,7 @@ typedef struct {
   const int height;
 } RendererCreateDescriptor;
 
-typedef void (*renderer_draw_callback)(Renderer *, void *);
+typedef void (*renderer_draw_callback)(void *);
 
 typedef struct {
   renderer_draw_callback callback;
@@ -161,7 +161,7 @@ void renderer_create(Renderer *, const RendererCreateDescriptor *);
 void renderer_destroy(Renderer *);
 void renderer_set_draw_mode(Renderer *, const RendererDrawMode);
 
-void renderer_draw_layout_callback(Renderer *, void *);
+void renderer_draw_layout_callback(void *);
 
 void renderer_add_draw_callback(Renderer *, renderer_draw_callback, void *,
                                 const int);

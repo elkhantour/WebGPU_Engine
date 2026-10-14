@@ -34,14 +34,6 @@ void mesh_topology_anchor_set_attribute(MeshTopology *mesh,
 int mesh_topology_anchor_insert(MeshTopologyAnchor *anchor, vindex_t *index,
                                 size_t count) {
 
-  // check anchor entries capacity
-  if (anchor->capacity <= anchor->count + count &&
-      mesh_topology_anchor_expand(anchor) != MeshTopologyAnchorStatus_Success) {
-    logger_add(LoggerFlag_Error,
-               "Couldn't allocate memory for wireframe anchor.");
-    return MeshTopologyAnchorStatus_AllocFail;
-  }
-
   // check if index doesn't already exists
   for (int i = 0; i < count; i++) {
     bool exists = false;
@@ -51,43 +43,27 @@ int mesh_topology_anchor_insert(MeshTopologyAnchor *anchor, vindex_t *index,
         break;
       }
 
-    if (exists == false)
-      anchor->entries[anchor->count++] = index[i];
+    if (exists == false) {
+      dyli_insert((void *)&anchor->entries, &anchor->capacity, &anchor->count,
+                  sizeof(*anchor->entries), &index[i], 1,
+                  "Mesh Base Anchor List");
+    }
   }
 
   return MeshTopologyAnchorStatus_Success;
 }
 
 int mesh_topology_anchor_expand(MeshTopologyAnchor *anchor) {
-
-  size_t new_capacity = 2 * anchor->capacity;
-  vindex_t *temp =
-      (vindex_t *)realloc(anchor->entries, sizeof(vindex_t) * new_capacity);
-
-  if (temp == NULL) {
-    logger_add(LoggerFlag_Error, "Couldn't expand line mesh anchor list.");
-    return MeshTopologyAnchorStatus_AllocFail;
-  }
-
-  anchor->entries = temp;
-  anchor->capacity = new_capacity;
-
-  return MeshTopologyAnchorStatus_Success;
+  return dyli_expand((void *)&anchor->entries, &anchor->capacity,
+                     &anchor->count, sizeof(*anchor->entries),
+                     2 * anchor->capacity, "Mesh Base Anchor List");
 }
 
 int mesh_topology_anchor_create(MeshTopologyAnchor *anchor, size_t capacity) {
 
-  anchor->entries = malloc(sizeof(vindex_t) * capacity);
-  anchor->capacity = capacity;
-  anchor->count = 0;
-
-  if (anchor->entries == NULL) {
-    logger_add(LoggerFlag_Error, "Couldn't create new line mesh anchor.");
-    anchor->capacity = 0;
-    return MeshTopologyAnchorStatus_AllocFail;
-  }
-
-  return MeshTopologyAnchorStatus_Success;
+  return dyli_create((void *)&anchor->entries, &anchor->capacity,
+                     &anchor->count, sizeof(*anchor->entries), capacity,
+                     "Mesh Base Anchor List");
 }
 
 /**
@@ -337,17 +313,18 @@ void mesh_topology_anchor_list_destroy(MeshTopologyAnchorList *list) {
   // clear anchors
   for (size_t i = 0; i < list->count; i++) {
     MeshTopologyAnchor *anchor = &list->entries[i];
-    free(anchor->entries);
-    anchor->entries = NULL;
-    anchor->count = 0;
-    anchor->capacity = 0;
+
+    // DEBUG
+    printf("anchor %lu / %lu: %p\n", i, list->count, anchor);
+
+    dyli_free((void *)&anchor->entries, &anchor->capacity, &anchor->count);
   }
 
+  // DEBUG
+  printf("list: %p\n", list->entries);
+
   // clear list
-  free(list->entries);
-  list->entries = NULL;
-  list->entries = 0;
-  list->capacity = 0;
+  dyli_free((void *)&list->entries, &list->capacity, &list->count);
 }
 
 /**

@@ -81,7 +81,7 @@ static const WGPUDepthStencilState screen_depth_stencil = {
 
 static const RenderPipelineStateObject layout_screen = {
     .label = "Pipeline Bind Groups - Screen",
-    .shader_path = RESOURCES_PATH_SHADER(screen.wgsl),
+    .shader_path = RESOURCES_PATH_SHADER(screen/screen.wgsl),
     .bind_groups_count = 2,
     .bind_groups = {&screen_layout_mesh, &screen_layout_texture},
     .bindings = {.mvp = &mvp_binding},

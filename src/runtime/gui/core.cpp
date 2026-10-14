@@ -117,7 +117,7 @@ GuiStatus gui_init(Gui *gui, const GuiDescriptor *desc) {
   return GuiStatus_Success;
 }
 
-void gui_draw_callback(Renderer *renderer, void *data) {
+void gui_draw_callback(void *data) {
 
   Gui *gui = (Gui *)data;
 

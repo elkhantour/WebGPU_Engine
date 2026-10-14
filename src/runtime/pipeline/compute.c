@@ -78,8 +78,8 @@ void compute_pipeline_handle_validation_error(WGPUErrorType type,
 
   WGPUShaderModule module = (WGPUShaderModule)userdata;
   // DEBUG
-  printf("Validation error for module: %p\n", module);
-  printf("Validation error message: %s\n", message);
+  //printf("Validation error for module: %p\n", module);
+  //printf("Validation error message: %s\n", message);
   // wgpuShaderModuleGetCompilationInfo(
   //     module, compute_pipeline_compilation_info_callback, NULL);
 }
@@ -89,7 +89,7 @@ void compute_pipeline_compilation_info_callback(
     WGPUCompilationInfoRequestStatus status, const WGPUCompilationInfo *info,
     void *userdata) {
 
-  printf("Get info of: %p\n", userdata);
+    //printf("Get info of: %p\n", userdata);
 
   if (status != WGPUCompilationInfoRequestStatus_Success) {
     printf("Failed to get compilation info!\n");
@@ -97,7 +97,7 @@ void compute_pipeline_compilation_info_callback(
   }
 
   // Print the number of messages
-  printf("Shader compilation messages: %lu\n", info->messageCount);
+  // printf("Shader compilation messages: %lu\n", info->messageCount);
 
   // Iterate over messages
   for (uint32_t i = 0; i < info->messageCount; i++) {
@@ -120,7 +120,7 @@ void compute_pipeline_compilation_info_callback(
       break;
     }
 
-    printf("[%s] %s\n", typeStr, msg->message);
+    //printf("[%s] %s\n", typeStr, msg->message);
 
     // Optional: print location if available
     if (msg->lineNum != 0 || msg->linePos != 0) {

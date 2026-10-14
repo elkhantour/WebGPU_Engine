@@ -11,7 +11,7 @@
 
 static const RenderPipelineStateObject layout_default = {
     .label = "Pipeline Bind Groups - Default",
-    .shader_path = RESOURCES_PATH_SHADER(default.wgsl),
+    .shader_path = RESOURCES_PATH_SHADER(default/default.wgsl),
     .bind_groups_count = 1,
     .bind_groups = {&mvp_layout},
     .bindings = {.mvp = &mvp_binding},

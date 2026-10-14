@@ -32,25 +32,6 @@ target_include_directories(${PROJECT_NAME}_vendor_includes INTERFACE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/examples>
 )
 
-# ----------------------------
-# Engine Macros (Compiler Definitions)
-# ----------------------------
-set(MACROS
-    -DCGLM_FORCE_DEPTH_ZERO_TO_ONE
-    -DVERBOSE
-    -DENGINE_EDITOR
-    -DDEBUG_TIME
-    -DAO_BAKE_HIT_COUNT
-)
-
-
-# -fsanitize=address creates too much locals and throw wasm error
-# see: https://github.com/emscripten-core/emscripten/issues/19346#issuecomment-1673579716
-set(ASAN
-    -fsanitize=undefined
-    -ferror-limit=0
-    -g
-)
 
 # ----------------------------
 # Vendor Library (imgui, cglm, stb, cgltf)
@@ -102,53 +83,81 @@ endforeach()
 
 
 # ----------------------------
-# Preload resources (Requires relative paths to work correctly)
+# Resource routing
 # ----------------------------
+set(ASSET_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/${ENGINE_SRC_DIR}/resources/assets")
+set(GLTF_ROOT  "${ASSET_ROOT}/gltf")
 
-# Define resource map and extensions (Paths are relative to the project source)
-set(RES_MAP
-    "${ENGINE_SRC_DIR}/backend/std_pipeline/render_shader:shaders"
-    "${ENGINE_SRC_DIR}/backend/std_pipeline/compute_shader:shaders"
-    "${WGSL_OUT_DIR}:shaders"
-    "${ENGINE_SRC_DIR}/resources/assets/gltf:gltf"
-    "${ENGINE_SRC_DIR}/resources/assets/font:fonts"
-    "${ENGINE_SRC_DIR}/resources/assets/texture:textures"
-    "${ENGINE_SRC_DIR}/resources/assets/mbin:mbin"
+# Directories to scan (the gltf root is included, but handled specially below)
+set(RES_SCAN_ROOTS
+    "${GLTF_ROOT}"
+    "${ASSET_ROOT}/font"
+    "${ASSET_ROOT}/texture"
+    "${ASSET_ROOT}/mbin"
+    "${CMAKE_CURRENT_SOURCE_DIR}/${ENGINE_SRC_DIR}/backend/std_pipeline/render_shader"
+    "${CMAKE_CURRENT_SOURCE_DIR}/${ENGINE_SRC_DIR}/backend/std_pipeline/compute_shader"
 )
-set(RES_EXTENSIONS wgsl jpg png ttf mbin gltf)
 
+# extension (lowercase) -> virtual directory
+set(RES_DEST_wgsl shaders)
+set(RES_DEST_jpg  textures)
+set(RES_DEST_jpeg textures)
+set(RES_DEST_png  textures)
+set(RES_DEST_hdr  textures)
+set(RES_DEST_ttf  fonts)
+set(RES_DEST_mbin mbin)
+set(RES_DEST_gltf gltf)
+set(RES_DEST_glb  gltf)
+set(RES_DEST_bin  gltf)
 
-# Generate the PRELOAD_FLAGS_STRING
 set(PRELOAD_ARGS_LIST "")
-foreach(res_map IN LISTS RES_MAP)
-    string(REPLACE ":" ";" parts "${res_map}")
-    list(GET parts 0 SRC_DIR)
-    list(GET parts 1 DST_DIR)
+set(PRELOAD_FILE_COUNT 0)
 
-    set(FILES "")
-    foreach(ext IN LISTS RES_EXTENSIONS)
-        file(GLOB_RECURSE ONE_EXT "${SRC_DIR}/*.${ext}")
-        list(APPEND FILES ${ONE_EXT})
-    endforeach()
+# Registers one file: <abs source path> -> /<virtual path>
+function(register_preload src virt)
+    file(RELATIVE_PATH rel_src "${CMAKE_BINARY_DIR}" "${src}")
+    message(STATUS "[preload] ${virt}  <=  ${rel_src}")
+    set(PRELOAD_ARGS_LIST ${PRELOAD_ARGS_LIST} "--preload-file" "${rel_src}@${virt}" PARENT_SCOPE)
+    math(EXPR n "${PRELOAD_FILE_COUNT} + 1")
+    set(PRELOAD_FILE_COUNT ${n} PARENT_SCOPE)
+endfunction()
 
-    foreach(f IN LISTS FILES)
-        get_filename_component(fname "${f}" NAME)
-        
-        # Calculate the relative source path from the project build directory to the file
-        file(RELATIVE_PATH RELATIVE_FILE_PATH 
-            "${CMAKE_BINARY_DIR}" 
-            "${f}"
-        )
-        
-        # Create the full argument string: source_path@virtual_path
-        set(PRELOAD_ARGUMENT "${RELATIVE_FILE_PATH}@${DST_DIR}/${fname}")
+# 1) Static assets, routed by extension
+foreach(root IN LISTS RES_SCAN_ROOTS)
+    file(GLOB_RECURSE ALL_FILES CONFIGURE_DEPENDS "${root}/*")
 
-        # Append BOTH the flag and the argument as separate list elements 
-        # (Using old-school string JOIN to assign to LINK_FLAGS later)
-        list(APPEND PRELOAD_ARGS_LIST "--preload-file")
-        list(APPEND PRELOAD_ARGS_LIST "${PRELOAD_ARGUMENT}")
+    foreach(f IN LISTS ALL_FILES)
+        get_filename_component(ext "${f}" LAST_EXT)      # ".JPG"
+	if(ext STREQUAL "")
+               continue()                                   # no extension: skip
+    	endif()
+        string(TOLOWER "${ext}" ext)
+        string(SUBSTRING "${ext}" 1 -1 ext)              # "jpg"
+
+        if(NOT DEFINED RES_DEST_${ext})
+            continue()                                   # unknown ext: skipped (.wgsl.in, .blend, ...)
+        endif()
+
+        cmake_path(IS_PREFIX GLTF_ROOT "${f}" NORMALIZE under_gltf)
+        if(under_gltf)
+            # glTF assets keep their layout so relative URIs resolve
+            file(RELATIVE_PATH rel "${GLTF_ROOT}" "${f}")
+            register_preload("${f}" "/gltf/${rel}")
+        else()
+            file(RELATIVE_PATH rel "${root}" "${f}")
+            register_preload("${f}" "/${RES_DEST_${ext}}/${rel}")
+        endif()
     endforeach()
 endforeach()
+
+# 2) Generated shaders: they don't exist at configure time, so use the known output list
+foreach(f IN LISTS WGSL_OUT_FILES)
+    get_filename_component(fname "${f}" NAME)
+    get_filename_component(dname "${f}" NAME_WE)
+    register_preload("${f}" "/shaders/${dname}/${fname}")
+endforeach()
+
+message(STATUS "[preload] Total files: ${PRELOAD_FILE_COUNT}")
 
 # Convert the list into a single, space-separated string for LINK_FLAGS
 string(JOIN " " PRELOAD_FLAGS_STRING ${PRELOAD_ARGS_LIST})
@@ -166,9 +175,34 @@ add_library(${PROJECT_NAME} STATIC
     ${WGSL_OUT_FILES} # Dependency: Ensures shaders are generated before linking
 )
 
+
+# ----------------------------
+# Engine Macros (Compiler Definitions)
+# ----------------------------
+set(MACROS
+    -DCGLM_FORCE_DEPTH_ZERO_TO_ONE
+    -DVERBOSE
+    -DENGINE_EDITOR
+    -DDEBUG_TIME
+    -DAO_BAKE_HIT_COUNT
+)
+
+
+# -fsanitize=address creates too much locals and throw wasm error
+# see: https://github.com/emscripten-core/emscripten/issues/19346#issuecomment-1673579716
+set(ASAN
+    -fsanitize=undefined
+    -ferror-limit=0
+    -g
+)
+
+set(FLAGS
+   -pthread
+)
+
 # Apply engine-specific macros
 target_compile_options(${PROJECT_NAME} PUBLIC ${MACROS})
-target_compile_options(${PROJECT_NAME} PRIVATE ${ASAN})
+target_compile_options(${PROJECT_NAME} PRIVATE ${FLAGS} ${ASAN})
 
 # Link the engine to its vendor libraries and set public includes
 target_link_libraries(${PROJECT_NAME} PUBLIC ${PROJECT_NAME}_vendors)

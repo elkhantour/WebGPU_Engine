@@ -3,12 +3,12 @@
 #include "../include/prefab.h"
 
 static const CubeMapPath lake_cubemap = {
-    .right = RESOURCES_PATH_TEXTURE(right.jpg),
-    .left = RESOURCES_PATH_TEXTURE(left.jpg),
-    .top = RESOURCES_PATH_TEXTURE(top.jpg),
-    .bottom = RESOURCES_PATH_TEXTURE(bottom.jpg),
-    .front = RESOURCES_PATH_TEXTURE(front.jpg),
-    .back = RESOURCES_PATH_TEXTURE(back.jpg),
+    .right = RESOURCES_PATH_TEXTURE(skybox/lake/right.jpg),
+    .left = RESOURCES_PATH_TEXTURE(skybox/lake/left.jpg),
+    .top = RESOURCES_PATH_TEXTURE(skybox/lake/top.jpg),
+    .bottom = RESOURCES_PATH_TEXTURE(skybox/lake/bottom.jpg),
+    .front = RESOURCES_PATH_TEXTURE(skybox/lake/front.jpg),
+    .back = RESOURCES_PATH_TEXTURE(skybox/lake/back.jpg),
 };
 
 

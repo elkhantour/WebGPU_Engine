@@ -2,6 +2,7 @@
 #include "backend/compute/core.h"
 #include "backend/compute/kawase.h"
 #include "backend/context.h"
+#include "backend/job_system.h"
 #include "backend/logger.h"
 #include "backend/renderer/batch.h"
 #include "backend/renderer/core.h"
@@ -37,6 +38,12 @@ EngineStatus engine_init(Engine *engine) {
                         .dpi = 1.0,
                     });
     renderer_create_layouts(engine_get_renderer(engine));
+  }
+
+  {
+    // === Job System ===
+    engine->job_system = rem_new_job_system();
+    job_system_init(engine->job_system, 2);
   }
 
   UBOManager *ubo;
@@ -93,6 +100,11 @@ EngineStatus engine_init(Engine *engine) {
     renderer_add_draw_callback(engine_get_renderer(engine),
 			       gui_draw_callback,
 			       (void *)engine_get_gui(engine),
+                               RendererDrawMode_All);
+
+    renderer_add_draw_callback(engine_get_renderer(engine),
+			       job_system_draw_callback,
+			       (void *)engine->job_system,
                                RendererDrawMode_All);
     // clang-format on
   }
@@ -174,10 +186,12 @@ void engine_init_reflection_pass(ProbeList *list, Renderer *renderer) {
           .view_dimension = WGPUTextureViewDimension_2DArray,
       });
 
-  compute_pass_kawase_create(&list->reflection_plane.kawase, &(ComputePassDescriptor){
-    .label = "Plane Reflection Kawase Pass",
-    .source_texture = list->reflection_plane.pass.color.texture,
-  });
+  compute_pass_kawase_create(
+      &list->reflection_plane.kawase,
+      &(ComputePassDescriptor){
+          .label = "Plane Reflection Kawase Pass",
+          .source_texture = list->reflection_plane.pass.color.texture,
+      });
 }
 
 void engine_init_shadow_map(LightList *list, Renderer *renderer) {

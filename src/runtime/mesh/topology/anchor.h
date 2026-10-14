@@ -8,10 +8,8 @@
 #include "runtime/geometry/vertex/attribute.h"
 #include "runtime/geometry/vertex/core.h"
 #include "runtime/geometry/vertex/index.h"
-#include "runtime/geometry/vertex/attribute.h"
-#include "runtime/geometry/vertex/core.h"
-#include "runtime/geometry/vertex/index.h"
 #include "utils/defines.h"
+#include "utils/dyli.h"
 
 #define MESH_TOPOLOGY_ANCHOR_LIST_DEFAULT_CAPACITY 1023
 #define MESH_TOPOLOGY_ANCHOR_DEFAULT_CAPACITY 32
@@ -28,17 +26,8 @@ typedef union {
   uint32_t u;
 } MeshTopologyAnchorKey;
 
-typedef struct {
-  vindex_t *entries;
-  size_t count;
-  size_t capacity;
-} MeshTopologyAnchor;
-
-typedef struct {
-  MeshTopologyAnchor *entries;
-  size_t count;
-  size_t capacity;
-} MeshTopologyAnchorList;
+typedef DYNAMIC_LIST(vindex_t) MeshTopologyAnchor;
+typedef DYNAMIC_LIST(MeshTopologyAnchor) MeshTopologyAnchorList;
 
 EXTERN_C_BEGIN
 

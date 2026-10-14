@@ -79,9 +79,9 @@
    Notice some of the interface function may be slower that others du to their
   query scope.
 
-   Render pass list  ------------------- (level 1)
-        L Render Pass ------------------ (level 2)
-             L Layout ------------------ (level 3)
+   Render pass list  ------------------- (level 1: slowest)
+        L Render Pass ------------------ (level 2: mid)
+             L Layout ------------------ (level 3: fastest)
                  L Mesh list
                       L Mesh
 
@@ -153,7 +153,7 @@ render_pass_layout_enable_mesh(RenderPassLayout *layout, Mesh *mesh) {
 
   // prevent adding it twice if already in it
   MeshDrawPacket *pack =
-      mesh_draw_packet_list_find_by_mesh(&layout->drawn_meshes, mesh, NULL);
+      mesh_draw_packet_list_find_mesh(&layout->drawn_meshes, mesh, NULL);
 
   if (pack)
     return RenderPassStatus_MeshAlreadyEnabled;
@@ -177,7 +177,7 @@ render_pass_layout_disable_mesh(RenderPassLayout *layout, Mesh *mesh) {
 
   size_t index;
   MeshDrawPacket *pack =
-      mesh_draw_packet_list_find_by_mesh(&layout->drawn_meshes, mesh, &index);
+      mesh_draw_packet_list_find_mesh(&layout->drawn_meshes, mesh, &index);
 
   if (pack && mesh_draw_packet_list_remove_at_index(
                   &layout->drawn_meshes, index) == DynamicListStatus_Success) {
@@ -186,7 +186,6 @@ render_pass_layout_disable_mesh(RenderPassLayout *layout, Mesh *mesh) {
 
   return RenderPassStatus_DrawListUpdateError;
 }
-
 
 static inline RenderPassStatus
 render_pass_layout_enable_all_mesh(RenderPassLayout *layout) {

@@ -93,7 +93,10 @@ void renderer_destroy(Renderer *renderer) {}
    Based on the renderer Draw Layouts, it first select the entry base on the
    renderer mode (texture/solid/wireframe).
  */
-void renderer_draw_layout_callback(Renderer *renderer, void *data) {
+void renderer_draw_layout_callback(void *data) {
+
+  Renderer *renderer = (Renderer *)data;
+
   // retrieve render mode
   const RendererDrawMode mode = renderer->draw_mode;
   render_pass_list_draw(&renderer->mesh_pass[__builtin_ctz(mode)]);
@@ -149,7 +152,7 @@ void renderer_render(void *data) {
   // call callbacks, pass renderer and data
   for (size_t i = 0; i < callback_list->count; i++) {
     RendererDrawCallback *cb = &callback_list->entries[i];
-    cb->callback(renderer, cb->data);
+    cb->callback(cb->data);
   }
 
   // update clock delta

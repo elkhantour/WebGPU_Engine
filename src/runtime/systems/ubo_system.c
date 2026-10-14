@@ -2,7 +2,7 @@
 #include "backend/ubo.h"
 
 
-void ubo_system_draw_callback(Renderer *renderer, void *data) {
+void ubo_system_draw_callback(void *data) {
 
   UBOManager *manager = (UBOManager *)data;
 

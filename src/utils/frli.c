@@ -1,195 +1,173 @@
 #include "frli.h"
 #include "backend/logger.h"
-#include <stddef.h>
 #include <stdlib.h>
+#include <string.h>
 
-/**
- * Allocate the base memory for a free list.
- */
-FreeListStatus frli_create(void **entries, size_t *capacity, size_t *count,
-                           size_t type_size, size_t num, const char *label) {
-
+FreeListStatus frli_create(void **entries, uint8_t **used, size_t *capacity,
+                           size_t *count, size_t type_size, size_t num,
+                           const char *label) {
   *entries = calloc(num, type_size);
+  *used = calloc(num, sizeof(uint8_t));
   *capacity = num;
   *count = 0;
 
-  if (*entries == NULL) {
+  if (!*entries || !*used) {
     logger_add(LoggerFlag_Error, "Couldn't create new free list: %s\n", label);
+    free(*entries);
+    free(*used);
+    *entries = NULL;
+    *used = NULL;
     *capacity = 0;
     return FreeListStatus_AllocFail;
   }
-
   return FreeListStatus_Success;
 }
 
-/**
- * Empty all entries without freeing memory.
- */
-FreeListStatus frli_empty(void *entries, size_t *count, size_t type_size) {
-  memset(entries, 0, (*count) * type_size);
+FreeListStatus frli_empty(void *entries, uint8_t *used, size_t capacity,
+                          size_t *count, size_t type_size) {
+  memset(entries, 0, capacity * type_size);
+  memset(used, 0, capacity);
   *count = 0;
   return FreeListStatus_Success;
 }
 
-/**
- * Free the entire list.
- */
-FreeListStatus frli_free(void **entries, size_t *capacity, size_t *count) {
+FreeListStatus frli_free(void **entries, uint8_t **used, size_t *capacity,
+                         size_t *count) {
   free(*entries);
+  free(*used);
   *entries = NULL;
+  *used = NULL;
   *capacity = 0;
   *count = 0;
   return FreeListStatus_Success;
 }
 
-/**
- * Get a new slot from the free list.
- * Reuses any empty slot (zeroed), otherwise expands.
- */
-void *frli_new_entry(void **entries, size_t *capacity, size_t *count,
-                     size_t type_size, size_t *index, const char *label) {
+void *frli_new_entry(void **entries, uint8_t *used, size_t *capacity,
+                     size_t *count, size_t type_size, size_t *index,
+                     const char *label) {
 
-  if (*entries == NULL || *capacity == 0) {
+  if (*entries == NULL || used == NULL || *capacity == 0) {
     logger_add(LoggerFlag_Error,
                "Free list '%s' not initialized, new entry aborted. "
-               "(Entries: <%p>, capacity: %lu, count: %lu)",
-               label, *entries, *capacity, *count);
+               "(Entries: <%p>, used: <%p>, capacity: %lu, count: %lu)",
+               label, *entries, (void *)used, *capacity, *count);
     return NULL;
   }
 
-  // Expand if full
-  if (*count == *capacity) {
-    logger_add(LoggerFlag_Error, "Free list '%s' reached max capacity");
+  if (*count >= *capacity) {
+    logger_add(LoggerFlag_Error, "Free list '%s' reached max capacity", label);
     return NULL;
   }
 
-  // Try to find a free slot (a fully zeroed entry)
   for (size_t i = 0; i < *capacity; i++) {
+    if (used[i])
+      continue;
+
+    used[i] = 1; // claim immediately
+    (*count)++;
+
     char *slot = (char *)(*entries) + (i * type_size);
-    bool is_free = true;
+    memset(slot, 0, type_size);
 
-    for (size_t b = 0; b < type_size; b++) {
-      if (slot[b] != 0) {
-        is_free = false;
-        break;
-      }
-    }
-
-    if (is_free) {
-
-      memset(slot, 0, type_size);
-
-      if (index)
-        *index = i;
-
-      (*count)++;
-      return slot;
-    }
+    if (index)
+      *index = i;
+    return slot;
   }
-
   return NULL;
 }
 
-/**
- * Remove an entry by pointer, marking it as free (zeroed).
- * Does NOT shift memory.
- */
-FreeListStatus frli_remove(void *entries, const size_t capacity, size_t *count,
-                           size_t type_size, void *entry, const char *label) {
+FreeListStatus frli_remove(void *entries, uint8_t *used, size_t capacity,
+                           size_t *count, size_t type_size, void *entry,
+                           const char *label) {
+  char *base = (char *)entries;
+  char *slot = (char *)entry;
 
-  for (size_t i = 0; i < capacity; i++) {
-    char *slot = (char *)entries + (i * type_size);
-    if (slot == entry) {
-      memset(slot, 0, type_size);
-      (*count)--;
-      return FreeListStatus_Success;
-    }
+  if (slot < base || slot >= base + capacity * type_size ||
+      (size_t)(slot - base) % type_size != 0) {
+    logger_add(LoggerFlag_Warning, "Entry not found in '%s'.", label);
+    return FreeListStatus_UnfoundEntry;
   }
-
-  logger_add(LoggerFlag_Warning, "Entry not found in '%s'.", label);
-  return FreeListStatus_UnfoundEntry;
+  return frli_remove_at_index(entries, used, capacity, count, type_size,
+                              (size_t)(slot - base) / type_size, label);
 }
 
-/**
- * Remove by index (mark as free instead of shifting).
- */
-FreeListStatus frli_remove_at_index(void *entries, const size_t capacity,
-                                    size_t *count, size_t type_size,
-                                    const size_t index, const char *label) {
+FreeListStatus frli_remove_at_index(void *entries, uint8_t *used,
+                                    size_t capacity, size_t *count,
+                                    size_t type_size, size_t index,
+                                    const char *label) {
   if (index >= capacity)
     return FreeListStatus_OutOfBound;
 
-  char *slot = (char *)entries + (index * type_size);
-  memset(slot, 0, type_size);
+  if (!used[index]) {
+    logger_add(LoggerFlag_Warning, "Slot %lu in '%s' is already free.", index,
+               label);
+    return FreeListStatus_UnfoundEntry; // double-remove guard
+  }
 
+  memset((char *)entries + (index * type_size), 0, type_size);
+  used[index] = 0;
   (*count)--;
   return FreeListStatus_Success;
 }
 
-/**
- * Append entries (used for cloning or merging free lists).
- */
-FreeListStatus frli_append(const void *src_entries, const size_t src_count,
-                           void **dest_entries, size_t *dest_capacity,
-                           size_t *dest_count, size_t type_size,
-                           const char *label) {
-
-  if (*dest_count + src_count >= *dest_capacity) {
+// Dense helpers: src is treated as src_count contiguous valid entries.
+FreeListStatus frli_append(const void *src_entries, size_t src_count,
+                           void **dest_entries, uint8_t *dest_used,
+                           size_t *dest_capacity, size_t *dest_count,
+                           size_t type_size, const char *label) {
+  if (*dest_count + src_count > *dest_capacity) {
     logger_add(LoggerFlag_Error,
-               "The source list has a count reach out of bound destination's "
-               "capacity list. (%lu against %lu).",
-               src_count, *dest_count);
+               "Appending %lu entries to '%s' (count %lu) exceeds capacity %lu.",
+               src_count, label, *dest_count, *dest_capacity);
     return FreeListStatus_OutOfBound;
   }
 
   memcpy((char *)(*dest_entries) + (*dest_count * type_size), src_entries,
          src_count * type_size);
+  memset(dest_used + *dest_count, 1, src_count);
   *dest_count += src_count;
   return FreeListStatus_Success;
 }
 
-/**
- * Replace all entries in destination.
- */
-FreeListStatus frli_replace(const void *src_entries, const size_t src_count,
-                            void **dest_entries, size_t *dest_capacity,
-                            size_t *dest_count, size_t type_size,
-                            const char *label) {
-
+FreeListStatus frli_replace(const void *src_entries, size_t src_count,
+                            void **dest_entries, uint8_t *dest_used,
+                            size_t *dest_capacity, size_t *dest_count,
+                            size_t type_size, const char *label) {
   if (src_count > *dest_capacity) {
-    logger_add(
-        LoggerFlag_Error,
-        "The source list has a count greater that the destination's capacity "
-        "list. (%lu against %lu).",
-        src_count, *dest_count);
+    logger_add(LoggerFlag_Error,
+               "Source (%lu) exceeds capacity (%lu) of '%s'.", src_count,
+               *dest_capacity, label);
     return FreeListStatus_OutOfBound;
   }
 
   memcpy(*dest_entries, src_entries, src_count * type_size);
+  memset(dest_used, 0, *dest_capacity);
+  memset(dest_used, 1, src_count);
   *dest_count = src_count;
   return FreeListStatus_Success;
 }
 
-/**
- * Clone list contents.
- */
-FreeListStatus frli_clone(const void *src_entries, const size_t src_count,
-                          void **dest_entries, size_t *dest_capacity,
-                          size_t *dest_count, size_t type_size,
-                          const char *label) {
-
-  size_t new_capacity = src_count;
-  void *temp = malloc(new_capacity * type_size);
-  if (!temp) {
+FreeListStatus frli_clone(const void *src_entries, size_t src_count,
+                          void **dest_entries, uint8_t **dest_used,
+                          size_t *dest_capacity, size_t *dest_count,
+                          size_t type_size, const char *label) {
+  void *new_entries = calloc(src_count, type_size);
+  uint8_t *new_used = calloc(src_count, sizeof(uint8_t));
+  if (!new_entries || !new_used) {
     logger_add(LoggerFlag_Error, "Couldn't clone to %s.", label);
+    free(new_entries);
+    free(new_used);
     return FreeListStatus_AllocFail;
   }
 
-  memcpy(temp, src_entries, src_count * type_size);
-  free(*dest_entries);
-  *dest_entries = temp;
-  *dest_capacity = new_capacity;
-  *dest_count = src_count;
+  memcpy(new_entries, src_entries, src_count * type_size);
+  memset(new_used, 1, src_count);
 
+  free(*dest_entries);
+  free(*dest_used);
+  *dest_entries = new_entries;
+  *dest_used = new_used;
+  *dest_capacity = src_count;
+  *dest_count = src_count;
   return FreeListStatus_Success;
 }

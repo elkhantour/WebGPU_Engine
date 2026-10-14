@@ -68,8 +68,9 @@ REMStatus resource_manager_init() {
 
     const size_t capacity = rem_type_init_capacity(i);
 
-    if (frli_create((void **)&g_rem.pools[i].entries, &g_rem.pools[i].capacity,
-                    &g_rem.pools[i].count, g_rem.pools[i].type_size, capacity,
+    if (frli_create((void **)&g_rem.pools[i].entries, &g_rem.pools[i].used,
+                    &g_rem.pools[i].capacity, &g_rem.pools[i].count,
+                    g_rem.pools[i].type_size, capacity,
                     g_rem.pools[i].label) == FreeListStatus_Success) {
 
       total_bytes += rem_config[i].type_size * rem_config[i].capacity;
@@ -313,14 +314,12 @@ WGPUShaderModule rem_new_shader_module(char *code, const char *label,
   REMBucket *entry =
       hsht_new_entry(&g_rem.hash_table, shader, HashTableNewFlag_None);
 
-  
-   if (entry == NULL) {
+  if (entry == NULL) {
     rem_destroy_shader_module(&shader);
     return NULL;
   }
 
-
-   if ((flag & REMWriteFlag_FreeData) && code) {
+  if ((flag & REMWriteFlag_FreeData) && code) {
     free(code);
     code = NULL;
   }
@@ -390,9 +389,9 @@ REM_DESTROY_WGPU_ITEM(shader_module, WGPUShaderModule, REMType_WGPUShaderModule,
                                                                                \
     size_t index = 0;                                                          \
     void *new_item = frli_new_entry(                                           \
-        (void **)&g_rem.pools[type].entries, &g_rem.pools[type].capacity,      \
-        &g_rem.pools[type].count, g_rem.pools[type].type_size, &index,         \
-        g_rem.pools[type].label);                                              \
+        (void **)&g_rem.pools[type].entries, g_rem.pools[type].used,           \
+        &g_rem.pools[type].capacity, &g_rem.pools[type].count,                 \
+        g_rem.pools[type].type_size, &index, g_rem.pools[type].label);         \
                                                                                \
     if (new_item == NULL)                                                      \
       return NULL;                                                             \
@@ -432,9 +431,10 @@ REM_ENGINE_LIST(_);
       return REMStatus_UnfoundResource;                                        \
                                                                                \
     FreeListStatus remove_pool = frli_remove_at_index(                         \
-        (void *)g_rem.pools[type].entries, g_rem.pools[type].capacity,         \
-        &g_rem.pools[type].count, g_rem.pools[type].type_size,                 \
-        bucket->pool_id, g_rem.pools[type].label);                             \
+        (void *)g_rem.pools[type].entries, g_rem.pools[type].used,             \
+        g_rem.pools[type].capacity, &g_rem.pools[type].count,                  \
+        g_rem.pools[type].type_size, bucket->pool_id,                          \
+        g_rem.pools[type].label);                                              \
                                                                                \
     HashTableStatus remove_hash =                                              \
         hsht_remove_entry(&g_rem.hash_table, handle);                          \

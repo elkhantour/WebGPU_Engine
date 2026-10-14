@@ -42,7 +42,7 @@ static const WGPUBindGroupLayoutDescriptor mipmap_bind_group = {
 
 static const ComputePipelineStateObject layout_mipmap = {
     .label = "Compute Pipeline Bind Groups - Mipmap",
-    .shader_path = RESOURCES_PATH_SHADER(mipmap.wgsl),
+    .shader_path = RESOURCES_PATH_SHADER(mipmap/mipmap.wgsl),
     .bind_groups_count = 1,
     .bind_groups = {&mipmap_bind_group},
 };
