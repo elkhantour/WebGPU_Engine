@@ -5,7 +5,6 @@
 
 #include "backend/logger.h"
 #include "backend/registry.h"
-#include "backend/renderer/render_pass/visibility.h"
 #include "backend/std_pipeline/core.h"
 #include "backend/ubo.h"
 #include "core.h"

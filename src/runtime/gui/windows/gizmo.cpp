@@ -6,7 +6,7 @@
 #include "runtime/gui/components/button_icon.hpp"
 #include "runtime/gui/core.h"
 #include "runtime/systems/selection_system.h"
-#include "runtime/systems/visibility_system.h"
+#include "runtime/systems/mesh_route_system.h"
 
 static const struct {
   const GizmoMode mode;
@@ -21,7 +21,7 @@ static const struct {
 static void gui_update_gizmo_mode(Scene *scene, Renderer *renderer,
                                   void *mode) {
 
-  visibility_system_hide_mesh_ref_list(
+  mesh_route_system_hide_mesh_ref_list(
       scene, renderer, &scene->gizmo.handles[scene->gizmo.mode]);
 
   gizmo_set_mode(&scene->gizmo, *(GizmoMode *)mode);
@@ -31,7 +31,7 @@ static void gui_update_gizmo_mode(Scene *scene, Renderer *renderer,
   if (scene_selection_count(&scene->selection)) {
     selection_system_update_gizmo_pos_to_selection(
         &scene->gizmo, &scene->selection, scene->ubo);
-    visibility_system_show_mesh_ref_list(
+    mesh_route_system_show_mesh_ref_list(
         scene, renderer, &scene->gizmo.handles[scene->gizmo.mode]);
   }
 }

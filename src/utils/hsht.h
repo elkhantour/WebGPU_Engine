@@ -171,7 +171,7 @@ void *hsht_find(HashTable *, const void *, size_t *);
 
 HashTableStatus hsht_empty(void *, size_t *, size_t, const char *);
 
-HashTableStatus hsht_destroy(void **, size_t *, size_t *, const char *);
+HashTableStatus hsht_free(HashTable *, const char *);
 
 static inline size_t hsht_count(HashTable *tb) { return tb->count; }
 

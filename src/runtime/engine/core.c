@@ -4,7 +4,6 @@
 #include "backend/context.h"
 #include "backend/job_system.h"
 #include "backend/logger.h"
-#include "backend/renderer/batch.h"
 #include "backend/renderer/core.h"
 #include "backend/renderer/reflection/core.h"
 #include "backend/renderer/reflection/draw.h"
@@ -15,13 +14,15 @@
 #include "runtime/light/list.h"
 #include "runtime/pipeline/render.h"
 #include "runtime/scene/add.h"
+#include "runtime/scene/mesh_query.h"
 #include "runtime/systems/scene_system.h"
 #include "runtime/systems/selection_system.h"
 #include "runtime/systems/ubo_system.h"
 #include <stdint.h>
 
-static inline void engine_init_shadow_map(LightList *, Renderer *);
-static inline void engine_init_reflection_pass(ProbeList *, Renderer *);
+static inline void engine_init_shadow_map(LightList *, Renderer *, Scene *);
+static inline void engine_init_reflection_pass(ProbeList *, Renderer *,
+                                               Scene *);
 static inline void engine_init_gizmo(Engine *, Gizmo *);
 
 /**
@@ -113,8 +114,9 @@ EngineStatus engine_init(Engine *engine) {
   engine_scene_add_mesh(engine, scene->grid, NULL,
                         EngineAddFlag_Unselectable | EngineAddFlag_TreeHide);
 
-  engine_init_shadow_map(&scene->lights, engine_get_renderer(engine));
-  engine_init_reflection_pass(&scene->probes, engine_get_renderer(engine));
+  engine_init_shadow_map(&scene->lights, engine_get_renderer(engine), scene);
+  engine_init_reflection_pass(&scene->probes, engine_get_renderer(engine),
+                              scene);
 
   ao_bake_init(&engine_get_renderer(engine)->texture.ambient_occlusion,
                &(AOBakeInitDescriptor){
@@ -144,22 +146,21 @@ EngineStatus engine_set_active_scene(Engine *engine, Scene *scene) {
   return EngineStatus_UnfoundEntity;
 }
 
-void engine_init_reflection_pass(ProbeList *list, Renderer *renderer) {
+void engine_init_reflection_pass(ProbeList *list, Renderer *renderer,
+                                 Scene *scene) {
 
-  RendererBatchMeshLists reflective_mesh_lists;
-  renderer_batch_get_mesh_list_from_pipeline(&renderer->batches,
-                                             RenderPipelineType_Reflection,
-                                             &reflective_mesh_lists);
+  const MeshRefList *reflective_mesh_lists;
+  scene_mesh_query_from_pipeline(scene, RenderPipelineType_Reflection,
+                                 &reflective_mesh_lists);
 
   RenderPassLayoutListDescriptor reflection_draw_list = {
-      .count = reflective_mesh_lists.count,
+      .count = reflective_mesh_lists->count,
   };
 
-  for (uint8_t i = 0; i < reflective_mesh_lists.count; i++)
+  for (uint8_t i = 0; i < reflective_mesh_lists->count; i++)
     reflection_draw_list.entries[i] = (RenderPassLayoutDescriptor){
         .shader = MeshShader_Reflection,
         .topology_callback = mesh_topology_base,
-        .meshes = reflective_mesh_lists.entries[i],
         .mesh_preprocessor_callback = probe_reflection_list_draw_preprocessor,
     };
 
@@ -194,24 +195,23 @@ void engine_init_reflection_pass(ProbeList *list, Renderer *renderer) {
       });
 }
 
-void engine_init_shadow_map(LightList *list, Renderer *renderer) {
+void engine_init_shadow_map(LightList *list, Renderer *renderer, Scene *scene) {
 
-  RendererBatchMeshLists shadow_mesh_lists;
-  renderer_batch_get_mesh_list_from_pipeline(
-      &renderer->batches, RenderPipelineType_Shadow, &shadow_mesh_lists);
+  const MeshRefList *shadow_mesh_lists;
+  scene_mesh_query_from_pipeline(scene, RenderPipelineType_Shadow,
+                                 &shadow_mesh_lists);
 
   RenderPassLayoutListDescriptor shadow_draw_list = {
-      .count = shadow_mesh_lists.count,
+      .count = shadow_mesh_lists->count,
   };
 
-  for (uint8_t i = 0; i < shadow_mesh_lists.count; i++)
+  for (uint8_t i = 0; i < shadow_mesh_lists->count; i++)
     shadow_draw_list.entries[i] = (RenderPassLayoutDescriptor){
         .shader = MeshShader_Shadow,
         .pipeline = RenderPipelineType_Shadow,
         .topology_callback = mesh_topology_base,
         .mesh_preprocessor_callback = shadow_map_pass_preprocessor_callback,
         .mesh_preprocessor_data = (void *)NULL,
-        .meshes = shadow_mesh_lists.entries[i],
     };
 
   shadow_map_init(&(ShadowMapInitDescriptor){
@@ -234,9 +234,9 @@ void engine_init_gizmo(Engine *engine, Gizmo *gizmo) {
     for (size_t j = 0; j < gizmo->handles[i].count; j++) {
       Mesh *mesh = gizmo->handles[i].entries[j];
       engine_scene_add_mesh_custom(engine, mesh, SCENE_LAYER_GIZMO,
-                                   &(RendererBatchKeyDescriptor){
+                                   &(RendererMeshConfigDescriptor){
                                        .layer = RendererLayer_Gizmo,
-                                       .flags = RendererBatchFlag_Fixed,
+                                       .flags = RendererMeshFlag_Fixed,
                                        .pipeline = RenderPipelineType_Unlit,
                                        .draw_mode = RendererDrawMode_All,
                                    },

@@ -12,14 +12,14 @@
 #include "backend/compute/core.h"
 #include "backend/profiler.h"
 #include "backend/registry.h"
-#include "backend/renderer/batch.h"
-#include "backend/renderer/render_pass/visibility.h"
+#include "backend/renderer/mesh_config.h"
 #include "backend/stat.h"
 #include "backend/std_pipeline/core.h"
 #include "render_pass/core.h"
 #include "runtime/mesh/core.h"
 #include "runtime/pipeline/pipeline.h"
 #include "runtime/pipeline/render.h"
+#include "runtime/shader/core.h"
 #include "runtime/texture/core.h"
 #include "runtime/texture/texture.h"
 #include "utils/hsht.h"
@@ -104,6 +104,7 @@ typedef struct {
   const int height;
 } RendererCreateDescriptor;
 
+
 typedef void (*renderer_draw_callback)(void *);
 
 typedef struct {
@@ -126,14 +127,13 @@ struct Renderer {
   int width, height;
   RenderPipelineMultisampleCount multisample;
 
-  HashTable batches;
-
   // cached texture shared throughout parent scene objects
   struct {
     RendererTextureAO ambient_occlusion;
   } texture; // TODO Make a TextureManager
 
   RendererDrawMode draw_mode;
+    
   RendererDrawCallbackList callbacks[RENDERER_DRAW_MODE_COUNT];
 
   RenderPassList mesh_pass[RENDERER_DRAW_MODE_COUNT];

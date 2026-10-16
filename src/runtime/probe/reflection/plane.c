@@ -11,7 +11,6 @@
 #include "backend/compute/kawase.h"
 #include "backend/registry.h"
 #include "backend/renderer/render_pass/draw.h"
-#include "backend/renderer/render_pass/visibility.h"
 #include "backend/resource_manager.h"
 #include "backend/ubo.h"
 #include "core.h"

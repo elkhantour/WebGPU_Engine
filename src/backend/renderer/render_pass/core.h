@@ -79,8 +79,6 @@ typedef struct {
   mesh_get_topology_callback topology_callback;
   render_pass_mesh_preprocessor_callback mesh_preprocessor_callback;
   void *mesh_preprocessor_data;
-  const MeshRefList *src_meshes; // SOT constant list used as a reference to
-                                 // enable/disable mesh to the draw meshes.
   MeshDrawPacketList
       drawn_meshes; // Compact and cache friendly data from mesh and shader
 } RenderPassLayout;
@@ -91,17 +89,11 @@ typedef struct {
 } RenderPassLayoutList;
 
 typedef struct {
-  RenderPassLayout *entries[RENDER_PASS_MAX_DRAW_LIST];
-  size_t count;
-} RenderPassLayoutRefList;
-
-typedef struct {
   MeshShader shader;
   RenderPipelineType pipeline;
   mesh_get_topology_callback topology_callback;
   render_pass_mesh_preprocessor_callback mesh_preprocessor_callback;
   void *mesh_preprocessor_data;
-  const MeshRefList *meshes;
 } RenderPassLayoutDescriptor;
 
 typedef struct {
@@ -137,8 +129,7 @@ struct RenderPass {
   RenderPassDepth depth;
   RenderPipelineMultisampleCount multisample;
 
-  RenderPassLayoutList stagged_list;
-  RenderPassLayoutRefList drawn_list;
+  RenderPassLayoutList layouts;
 
   render_pass_draw_callback draw_callback;
   WGPUCommandEncoder command_encoder;
@@ -234,6 +225,13 @@ WGPUTextureView render_pass_view_color(RenderPass *, size_t);
 WGPUTextureView render_pass_view_depth(RenderPass *, size_t);
 
 void render_pass_sync_drawn_layouts(RenderPass *);
+
+/* === Layout === */
+
+bool render_pass_layout_accepts(Mesh *mesh, const RenderPassLayout *layout,
+                                const size_t mode, const size_t layer);
+
+bool render_pass_layout_add_mesh(RenderPassLayout *layout, Mesh *mesh);
 
 EXTERN_C_END
 

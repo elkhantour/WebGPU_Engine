@@ -238,7 +238,7 @@ static inline RenderPassStatus render_pass_enable_mesh(RenderPass *pass,
     if (enable != RenderPassStatus_Success)
       status = enable;
   }
-
+  
   render_pass_sync_drawn_layouts(pass);
 
   return status;

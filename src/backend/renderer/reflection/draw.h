@@ -6,7 +6,6 @@
 #include "backend/profiler.h"
 #include "backend/renderer/render_pass/core.h"
 #include "backend/renderer/render_pass/draw.h"
-#include "backend/renderer/render_pass/visibility.h"
 #include "backend/resource_manager.h"
 #include "runtime/probe/reflection/plane.h"
 #include "runtime/scene/core.h"
@@ -42,7 +41,7 @@ static inline void renderer_draw_plane_reflection(void *data) {
       ProbeReflectionPlane *probe = &list->entries[i];
 
       // prevent self reflection by disabling probe meshes from the render pass
-      render_pass_disable_mesh_ref_list(&list->pass, &probe->excluded_meshes);
+      //FIX ME render_pass_disable_mesh_ref_list(&list->pass, &probe->excluded_meshes);
 
       // define target layer
       WGPUTextureViewDescriptor target_color_desc = {
@@ -89,7 +88,7 @@ static inline void renderer_draw_plane_reflection(void *data) {
       rem_destroy_view(&target_depth);
 
       // re-enable all meshes for next draw (dirty......)
-      render_pass_enable_all_mesh(&list->pass);
+      //FIX ME render_pass_enable_all_mesh(&list->pass);
     }
   }
   render_pass_im_end(&list->pass);

@@ -1,18 +1,13 @@
-#ifndef _ENGINE_BUILD_H_
-#define _ENGINE_BUILD_H_
+#ifndef _RENDERER_MESH_BUILD_H_
+#define _RENDERER_MESH_BUILD_H_
 
-#include "backend/renderer/batch.h"
-#include "core.h"
+#include "backend/job_system.h"
+#include "backend/renderer/core.h"
+#include "backend/renderer/mesh_config.h"
+#include "runtime/scene/core.h"
 
 /*
-
-   ▗▄▄▖ ▗▖ ▗▖▗▄▄▄▖▗▖   ▗▄▄▄
-   ▐▌ ▐▌▐▌ ▐▌  █  ▐▌   ▐▌  █
-   ▐▛▀▚▖▐▌ ▐▌  █  ▐▌   ▐▌  █
-   ▐▙▄▞▘▝▚▄▞▘▗▄█▄▖▐▙▄▄▖▐▙▄▄▀
-
-
-   Mesh Building process:
+   Mesh Binding process:
 
    The scene building process handles each layers respective essentials shader
    creation or binding process( view matrix...).
@@ -48,6 +43,7 @@
 
  */
 
-EngineStatus engine_build_mesh(Engine *, Mesh *, const RendererBatchFlag);
+RendererStatus renderer_build_mesh(Renderer *, Scene *, JobSystem *, Mesh *,
+                                   const RendererMeshFlag);
 
 #endif

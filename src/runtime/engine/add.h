@@ -1,7 +1,7 @@
 #ifndef _ENGINE_ADD_H_
 #define _ENGINE_ADD_H_
 
-#include "backend/renderer/batch.h"
+#include "backend/renderer/mesh_config.h"
 #include "core.h"
 #include "runtime/light/list.h"
 
@@ -55,7 +55,7 @@ EngineStatus engine_scene_add_mesh(Engine *, Mesh *, const char *,
 
 // manually enter the batch descriptor
 EngineStatus engine_scene_add_mesh_custom(Engine *, Mesh *, const char *,
-                                          const RendererBatchKeyDescriptor *,
+                                          const RendererMeshConfigDescriptor *,
                                           const EngineAddFlag);
 
 // === Remove Mesh ===

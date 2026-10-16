@@ -24,6 +24,7 @@
 #include "runtime/probe/reflection/plane.h"
 #include "runtime/scene/editor_mesh/list.h"
 #include "runtime/scene/environment/core.h"
+#include "runtime/scene/mesh_cache.h"
 #include "runtime/scene/stat.h"
 #include "runtime/texture/core.h"
 #include "runtime/viewport/core.h"
@@ -43,7 +44,8 @@ void scene_create(Scene *scene, const SceneCreateDescriptor *desc) {
         stat_init(&scene->stats);
       /*  ===== SCENE RENDER =====   */
       scene_environment_init(&scene->environment);
-      {
+
+    
     scene->environment.ubo_slot =
         ubo_new_entry(scene->ubo, UBOType_Environment);
 
@@ -51,7 +53,9 @@ void scene_create(Scene *scene, const SceneCreateDescriptor *desc) {
 
     ubo_upload_entry(scene->ubo, UBOType_Environment,
                      &scene->environment.ubo_slot);
-      }
+
+    static const size_t SCENE_MESH_CACHE_CAPACITY = 32;
+    scene_mesh_cache_init(&scene->mesh_cache, &scene->meshes, SCENE_MESH_CACHE_CAPACITY);
 }
 
 {
@@ -170,4 +174,7 @@ MeshRefList *scene_layer_meshes(Scene *scene, const char *name) {
 
 void scene_destroy(Scene *scene) {
   // TODO
+
+  mesh_ref_list_free(&scene->meshes);
+  scene_mesh_cache_destroy(&scene->mesh_cache);
 }

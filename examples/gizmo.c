@@ -26,8 +26,8 @@ void example_gizmo(Engine *engine) {
   mesh_set_position(gizmo, (vec3){2.0f, 3.3f, 2.0f});
 
   engine_scene_add_mesh_custom(engine, gizmo, NULL,
-                               &(RendererBatchKeyDescriptor){
-                                   .flags = RendererBatchFlag_Fixed,
+                               &(RendererMeshConfigDescriptor){
+                                   .flags = RendererMeshFlag_Fixed,
                                    .layer = RendererLayer_Gizmo,
                                    .pipeline = RenderPipelineType_Line,
                                    .draw_mode = RendererDrawMode_All,

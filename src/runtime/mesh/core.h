@@ -6,6 +6,7 @@
 #include <stdint.h>
 
 #include "backend/registry.h"
+#include "backend/renderer/mesh_config.h"
 #include "backend/ubo.h"
 #include "runtime/geometry/vertex/attribute.h"
 #include "runtime/geometry/vertex/index.h"
@@ -44,18 +45,6 @@ typedef struct {
   size_t count;
 } MeshRefList;
 
-#define MESH_STD_SHADER_COUNT 7
-
-typedef enum {
-  MeshShader_Texture,
-  MeshShader_Shadow,
-  MeshShader_Reflection,
-  MeshShader_Solid,
-  MeshShader_Wireframe,
-  MeshShader_Outline,
-  MeshShader_Stencil,
-} MeshShader;
-
 // Builder Pattern | Descriptor Pattern
 typedef struct {
   VertexAttribute vertex;
@@ -78,11 +67,24 @@ typedef struct {
 
 typedef void (*mesh_get_transform_attribute)(Mesh *, vec3);
 
+
+typedef enum {
+  MeshShader_Texture,
+  MeshShader_Shadow,
+  MeshShader_Reflection,
+  MeshShader_Solid,
+  MeshShader_Wireframe,
+  MeshShader_Outline,
+  MeshShader_Stencil,
+  MeshShader_COUNT,
+} MeshShader;
+
 // Core
 struct Mesh {
 
   reg_id_t id;
   name_t name;
+  RendererMeshConfig render_config;
 
   // transforms
   mat4 model;
@@ -101,8 +103,8 @@ struct Mesh {
     MeshTopology override;
   } topology;
 
-  // shader
-  Shader *shader[MESH_STD_SHADER_COUNT];
+    
+  Shader *shader[MeshShader_COUNT];
 
   // hierarchy
   Mesh *parent;
@@ -190,6 +192,28 @@ static const char *mesh_get_name(Mesh *mesh) { return mesh->name; }
 
 static inline void mesh_set_name(Mesh *mesh, const char *src) {
   name_copy(src, mesh->name);
+}
+
+static inline void mesh_set_render_config(Mesh *mesh,
+                                          const RendererMeshConfig *config) {
+  mesh->render_config = *config;
+}
+
+static inline bool mesh_set_flags(Mesh *mesh, const RendererMeshFlag flags) {
+  if (mesh->render_config.flags == flags)
+    return false;
+  mesh->render_config.flags = flags;
+  return true;
+}
+
+static inline bool mesh_add_flags(Mesh *mesh, const RendererMeshFlag flags) {
+  return mesh_set_flags(mesh,
+                        (RendererMeshFlag)(mesh->render_config.flags | flags));
+}
+
+static inline bool mesh_remove_flags(Mesh *mesh, const RendererMeshFlag flags) {
+  return mesh_set_flags(mesh,
+                        (RendererMeshFlag)(mesh->render_config.flags & ~flags));
 }
 
 EXTERN_C_END

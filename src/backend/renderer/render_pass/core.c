@@ -45,7 +45,7 @@ void render_pass_create(RenderPass *pass,
     render_pass_init_depth(pass, desc);
 
   if (desc->draw_list)
-    render_pass_draw_list_copy(desc->draw_list, &pass->stagged_list);
+    render_pass_draw_list_copy(desc->draw_list, &pass->layouts);
 }
 
 void render_pass_init_color(RenderPass *pass,
@@ -177,7 +177,6 @@ void render_pass_draw_list_copy(const RenderPassLayoutListDescriptor *src,
     d->topology_callback = s->topology_callback;
     d->mesh_preprocessor_callback = s->mesh_preprocessor_callback;
     d->mesh_preprocessor_data = s->mesh_preprocessor_data;
-    d->src_meshes = s->meshes;
 
     //// DELETEME (useful debug)
     // printf("[%lu] pipeline: %s | shader: %d | mesh list: %p \n", i,
@@ -191,15 +190,15 @@ void render_pass_draw_list_copy(const RenderPassLayoutListDescriptor *src,
 RenderPassStatus render_pass_update_preprocessor_data(RenderPass *pass,
                                                       uint8_t index,
                                                       void *data) {
-  if (index > pass->stagged_list.count) {
+  if (index > pass->layouts.count) {
     logger_add(LoggerFlag_Warning,
                "Trying to update an out of bound (%d) render pass "
                "preprocessor data. Target render pass has %lu draw lists.",
-               index, pass->stagged_list.count);
+               index, pass->layouts.count);
     return RenderPassStatus_OutOfBoundDrawIndex;
   }
 
-  pass->stagged_list.entries[index].mesh_preprocessor_data = data;
+  pass->layouts.entries[index].mesh_preprocessor_data = data;
 
   return RenderPassStatus_Success;
 }
@@ -207,9 +206,9 @@ RenderPassStatus render_pass_update_preprocessor_data(RenderPass *pass,
 RenderPassStatus render_pass_update_all_preprocessor_data(RenderPass *pass,
                                                           void *data) {
 
-  for (size_t i = 0; i < pass->stagged_list.count; i++)
-    if (pass->stagged_list.entries[i].mesh_preprocessor_callback)
-      pass->stagged_list.entries[i].mesh_preprocessor_data = data;
+  for (size_t i = 0; i < pass->layouts.count; i++)
+    if (pass->layouts.entries[i].mesh_preprocessor_callback)
+      pass->layouts.entries[i].mesh_preprocessor_data = data;
 
   return RenderPassStatus_Success;
 }
@@ -256,15 +255,68 @@ WGPUTextureView render_pass_view_depth(RenderPass *pass, size_t index) {
   We basically register or unregister a layout from the list depending on its
   drawn meshes count. Cause if they don't have any drawn mesh, there is no
   point calling setRenderPipeline
+
+  TODO: replace this by:
+  1 - sorting the layouts by putting the one with meshes first
+  2 - adjusting the count (active count) according to it
 */
 void render_pass_sync_drawn_layouts(RenderPass *pass) {
 
-  pass->drawn_list.count = 0;
+  // pass->layouts.count = 0;
+  //
+  //  for (size_t i = 0; i < pass->layouts.count; i++) {
+  //    RenderPassLayout *stagged_layout = &pass->stagged_list.entries[i];
+  //
+  //    if (stagged_layout->drawn_meshes.count)
+  //      pass->drawn_list.entries[pass->drawn_list.count++] = stagged_layout;
+  //  }
+}
 
-  for (size_t i = 0; i < pass->stagged_list.count; i++) {
-    RenderPassLayout *stagged_layout = &pass->stagged_list.entries[i];
+/**
+   Should `mesh` be drawn by `layout`, which lives in the pass for `layer`
+   (pass index == layer bit) of draw mode `mode` (index)?
+ */
+bool render_pass_layout_accepts(Mesh *mesh, const RenderPassLayout *layout,
+                                const size_t mode, const size_t layer) {
 
-    if (stagged_layout->drawn_meshes.count)
-      pass->drawn_list.entries[pass->drawn_list.count++] = stagged_layout;
-  }
+  const RendererMeshConfig *cfg = &mesh->render_config;
+
+  // 1. flags predominate: a Hidden mesh is accepted nowhere
+  if (cfg->flags & RendererMeshFlag_Hidden)
+    return false;
+
+  // 2. draw mode
+  if (!(cfg->draw_mode & (1u << mode)))
+    return false;
+
+  // the mesh must have the shader this layout draws with
+  Shader *shader = mesh_shader(mesh, layout->shader);
+  if (!shader)
+    return false;
+
+  // 3. outline pass: takes selected meshes, on flags alone (its layouts use
+  //    their own pipeline, so the layer and pipeline rules don't apply)
+  if (layer == (size_t)__builtin_ctz(RendererLayer_Outline))
+    return (cfg->flags & RendererMeshFlag_Selection) != 0;
+
+  // 4. layer (a mesh on Layer_All goes to every pass)
+  if (cfg->layer != RendererLayer_All && !(cfg->layer & (1u << layer)))
+    return false;
+
+  // 5. pipeline: the one used by the mesh's shader for this layout's shader
+  return std_render_pipeline_type(*shader->pipeline) == layout->pipeline;
+}
+
+bool render_pass_layout_add_mesh(RenderPassLayout *layout, Mesh *mesh) {
+
+  Shader *shader = mesh_shader(mesh, layout->shader);
+  if (!shader)
+    return false;
+
+  MeshDrawPacket *pack = mesh_draw_packet_list_new_entry(&layout->drawn_meshes);
+  if (!pack)
+    return false;
+
+  mesh_create_draw_packet(layout->topology_callback(mesh), shader, mesh, pack);
+  return true;
 }

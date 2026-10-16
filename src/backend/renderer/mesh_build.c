@@ -1,6 +1,6 @@
-#include "build.h"
+#include "mesh_build.h"
 #include "backend/job_system.h"
-#include "backend/renderer/batch.h"
+#include "backend/renderer/core.h"
 #include "runtime/engine/core.h"
 #include "runtime/geometry/line/core.h"
 #include "runtime/geometry/vertex/attribute.h"
@@ -10,11 +10,13 @@
 #include "runtime/mesh/shader/texture.h"
 #include "runtime/mesh/topology/boundbox.h"
 #include "runtime/pipeline/render.h"
+#include "runtime/systems/mesh_route_system.h"
 
 // pipeline builders
-static inline void build_mesh_texture(Scene *, Mesh *, const RendererBatchFlag);
+static inline void build_mesh_texture(Scene *, Mesh *, const RendererMeshFlag);
 static inline void build_mesh_solid(Scene *, Mesh *);
-static inline void build_mesh_wireframe(Scene *, Mesh *, JobSystem *);
+static inline void build_mesh_wireframe(Scene *, Mesh *, Renderer *,
+                                        JobSystem *);
 static inline void build_mesh_outline(Scene *, Mesh *);
 static inline void build_mesh_boundbox(Scene *, Mesh *);
 
@@ -22,11 +24,10 @@ static inline void build_mesh_boundbox(Scene *, Mesh *);
    Build the mesh according to the current scene rendere mode and pipeline in
    which the mesh will be added to.
  */
-EngineStatus engine_build_mesh(Engine *engine, Mesh *mesh,
-                               const RendererBatchFlag flag) {
+RendererStatus renderer_build_mesh(Renderer *renderer, Scene *scene,
+                                   JobSystem *job_system, Mesh *mesh,
+                                   const RendererMeshFlag flag) {
 
-  Scene *scene = engine_get_active_scene(engine);
-  Renderer *renderer = engine_get_renderer(engine);
   UBOManager *ubo = scene->ubo;
 
   // EDITORONLY
@@ -34,13 +35,13 @@ EngineStatus engine_build_mesh(Engine *engine, Mesh *mesh,
   build_mesh_texture(scene, mesh, flag);
 
   // only build those for dynamic meshes
-  if ((flag & RendererBatchFlag_Fixed) == 0) {
+  if ((flag & RendererMeshFlag_Fixed) == 0) {
     build_mesh_boundbox(scene, mesh);
     build_mesh_solid(scene, mesh);
-    build_mesh_wireframe(scene, mesh, engine->job_system);
+    build_mesh_wireframe(scene, mesh, renderer, job_system);
   }
 
-  return EngineStatus_Success;
+  return RendererStatus_Success;
 }
 
 /**
@@ -53,7 +54,7 @@ EngineStatus engine_build_mesh(Engine *engine, Mesh *mesh,
    Establish pipeline from previously set bind groups
  */
 void build_mesh_texture(Scene *scene, Mesh *mesh,
-                        const RendererBatchFlag flags) {
+                        const RendererMeshFlag flags) {
 
 #ifdef VERBOSE_BUILDING_PHASE
   logger_add(LoggerFlag_MeshBuild, "Texture %s", mesh->name);
@@ -78,7 +79,7 @@ void build_mesh_texture(Scene *scene, Mesh *mesh,
   pipeline configuration flags as to determine if we need to bind lights,
   shadow maps or reflections relative resources.
  */
-  if (RendererBatchFlag_Reflection & flags) {
+  if (RendererMeshFlag_Reflection & flags) {
 
     mesh_shader_bind_mvp(mesh, MeshShader_Reflection, ubo);
 
@@ -91,13 +92,13 @@ void build_mesh_texture(Scene *scene, Mesh *mesh,
         scene->probes.reflection_probe.pass.color.attachment.view, ubo);
   }
 
-  if (RendererBatchFlag_Lit & flags) {
+  if (RendererMeshFlag_Lit & flags) {
 
     mesh_shader_texture_update_lights(mesh, MeshShader_Texture, ubo);
     mesh_shader_texture_update_lights(mesh, MeshShader_Reflection, ubo);
   }
 
-  if (RendererBatchFlag_Shadow & flags) {
+  if (RendererMeshFlag_Shadow & flags) {
 
     mesh_shader_texture_update_shadow_maps(
         mesh, scene->lights.point.shadow.pass.depth.attachment.view,
@@ -154,6 +155,7 @@ void build_mesh_outline(Scene *scene, Mesh *mesh) {
 typedef struct {
   Scene *scene;
   Mesh *mesh;
+  Renderer *renderer;
   MeshTopology src;             // read-only view of base topology
   MeshTopologyWireframe result; // worker writes here, NOT into the mesh
   uint32_t mesh_generation;     // detects mesh destroyed/rebuilt meanwhile
@@ -172,6 +174,8 @@ static void wireframe_worker_start(void *data) {
 static void wireframe_worker_done(void *data) {
   WireframeJob *job = data;
   Mesh *mesh = job->mesh;
+  Scene *scene = job->scene;
+  Renderer *renderer = job->renderer;
 
   // TODO: mesh was destroyed or rebuilt while we were computing -> discard
   // if (!mesh_is_alive(mesh) || mesh->generation != job->mesh_generation) {
@@ -195,6 +199,9 @@ static void wireframe_worker_done(void *data) {
     mesh_shader_bind_mvp(mesh, MeshShader_Wireframe, job->scene->ubo);
   }
 
+  // refresh mesh in render pass cause we updated it's vertex/index buffer
+  mesh_route_system_refresh_mesh(renderer, mesh);
+
   free(job);
 }
 
@@ -202,7 +209,8 @@ static void wireframe_worker_done(void *data) {
    Build meshes Wireframe shader in each scene list
    Establish pipeline from previously set bind groups
  */
-void build_mesh_wireframe(Scene *scene, Mesh *mesh, JobSystem *job_system) {
+void build_mesh_wireframe(Scene *scene, Mesh *mesh, Renderer *renderer,
+                          JobSystem *job_system) {
 
 #ifdef VERBOSE_BUILDING_PHASE
   logger_add(LoggerFlag_MeshBuild, "Wireframe %s", mesh->name);
@@ -230,6 +238,7 @@ void build_mesh_wireframe(Scene *scene, Mesh *mesh, JobSystem *job_system) {
   // Create a worker for the wireframe creation (can be expensive for highpoly)
   WireframeJob *job = calloc(1, sizeof(*job));
   job->scene = scene;
+  job->renderer = renderer;
   job->mesh = mesh;
   job->src = mesh_topology_base_vertex(&mesh->topology.base);
   job->mesh_generation = 0; // TODO: remove it?

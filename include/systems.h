@@ -5,6 +5,6 @@
 #include "runtime/systems/scene_system.h"
 #include "runtime/systems/selection_system.h"
 #include "runtime/systems/ubo_system.h"
-#include "runtime/systems/visibility_system.h"
+#include "runtime/systems/mesh_route_system.h"
 
 #endif

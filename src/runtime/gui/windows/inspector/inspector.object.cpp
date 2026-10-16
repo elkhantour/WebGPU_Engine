@@ -1,5 +1,4 @@
 #include "inspector.object.hpp"
-#include "backend/renderer/batch.h"
 #include "imgui/imgui.h"
 #include "runtime/gui/windows/inspector/inspector.ambient_light.hpp"
 #include "runtime/gui/windows/inspector/inspector.mesh.hpp"
@@ -7,6 +6,7 @@
 #include "runtime/gui/windows/inspector/inspector.probe_reflection_plane.hpp"
 #include "runtime/gui/windows/inspector/inspector.spot_light.hpp"
 #include "runtime/gui/windows/inspector/inspector.sun_light.hpp"
+#include "runtime/scene/mesh_query.h"
 
 RegEntry const *UI::ObjectTab::active_object = nullptr;
 
@@ -36,13 +36,12 @@ reg_id_t UI::ObjectTab::set_active_target() {
     }
   }
 
-  RendererBatchMeshLists dynamic_meshes;
-  renderer_batch_get_mesh_list_without_flags(
-      &renderer->batches, RendererBatchFlag_Fixed, &dynamic_meshes);
+  const MeshRefList *dynamic_meshes;
+  scene_mesh_query_without_flags(scene, RendererMeshFlag_Fixed,
+                                 &dynamic_meshes);
 
-  for (uint8_t i = 0; i < dynamic_meshes.count; i++)
-    for (size_t j = 0; j < dynamic_meshes.entries[i]->count; j++)
-      return dynamic_meshes.entries[i]->entries[j]->id;
+  for (size_t j = 0; j < dynamic_meshes->count; j++)
+    return dynamic_meshes->entries[j]->id;
 
   // TODO Make fallback id more robust
   return REG_OWNER_UNDEFINED;

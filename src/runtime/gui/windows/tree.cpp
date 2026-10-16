@@ -1,7 +1,6 @@
 #include "tree.hpp"
 #include "backend/logger.h"
 #include "backend/registry.h"
-#include "backend/renderer/batch.h"
 #include "backend/renderer/core.h"
 #include "backend/std_pipeline/core.h"
 #include "backend/theme/core.h"
@@ -18,7 +17,7 @@
 #include "runtime/scene/selection/core.h"
 #include "runtime/scene/selection/filter.h"
 #include "runtime/systems/selection_system.h"
-#include "runtime/systems/visibility_system.h"
+#include "runtime/systems/mesh_route_system.h"
 #include "utils/name.h"
 
 void UI::Tree::draw_mesh(Mesh *mesh, const size_t index) {
@@ -47,16 +46,16 @@ void UI::Tree::draw_mesh(Mesh *mesh, const size_t index) {
   if (ImGui::IsItemClicked()) {
 
     RendererStatus mesh_state =
-        visibility_system_toggle_mesh(scene, renderer, mesh);
+        mesh_route_system_toggle_mesh(scene, renderer, mesh);
 
     const RenderPipelineType pipeline = std_render_pipeline_type(
         (*mesh_shader(mesh, MeshShader_Texture)->pipeline));
 
-    const RendererBatchKey *batch =
-        renderer_batch_get_key_from_pipeline(pipeline);
+    const RendererMeshConfig *batch =
+        renderer_mesh_config_from_pipeline(pipeline);
 
     const SceneSelectionType selection_type =
-        (batch->flags & RendererBatchFlag_Shadow)
+        (batch->flags & RendererMeshFlag_Shadow)
             ? SceneSelectionType_MeshShadow
             : SceneSelectionType_Mesh;
 

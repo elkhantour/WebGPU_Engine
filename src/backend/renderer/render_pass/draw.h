@@ -226,10 +226,10 @@ void render_pass_im_draw(RenderPass *pass) {
   // Go through and draw each mode render pass
   // Draw meshes
   // loop through mesh lists and draw meshes
-  for (size_t j = 0; j < pass->drawn_list.count; j++) {
+  for (size_t j = 0; j < pass->layouts.count; j++) {
 
     // retrieve layout
-    RenderPassLayout *layout = pass->drawn_list.entries[j];
+    RenderPassLayout *layout = &pass->layouts.entries[j];
     MeshDrawPacketList *packets = &layout->drawn_meshes;
     render_pass_mesh_preprocessor_callback mesh_preprocessor =
         layout->mesh_preprocessor_callback;

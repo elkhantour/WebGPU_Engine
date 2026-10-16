@@ -140,7 +140,6 @@ void *hsht_new_entry(HashTable *table, const void *key,
   size_t start = table->generator(key) % table->capacity;
   size_t index = start;
 
-  
   while (table->get_bucket_state((void *)(char *)(table->entries) +
                                  (index * table->bucket_size)) !=
          HashTableBucketState_Empty) {
@@ -189,14 +188,13 @@ HashTableStatus hsht_empty(void *entries, size_t *count, size_t bucket_size,
   return HashTableStatus_Success;
 }
 
-HashTableStatus hsht_destroy(void **entries, size_t *capacity, size_t *count,
-                             const char *label) {
+HashTableStatus hsht_free(HashTable *table, const char *label) {
 
-  *capacity = 0;
-  *count = 0;
+  table->capacity = 0;
+  table->count = 0;
 
-  free(*entries);
-  *entries = NULL;
+  free(table->entries);
+  table->entries = NULL;
 
   return HashTableStatus_Success;
 }

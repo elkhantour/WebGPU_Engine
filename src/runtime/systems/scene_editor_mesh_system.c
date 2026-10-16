@@ -1,13 +1,13 @@
 #include "scene_editor_mesh_system.h"
-#include "backend/renderer/batch.h"
 #include "backend/renderer/shadow_map/draw.h"
-#include "backend/renderer/visibility.h"
 #include "runtime/light/list.h"
 #include "runtime/light/uniform.h"
 #include "runtime/probe/core.h"
 #include "runtime/probe/uniform.h"
 #include "runtime/scene/editor_mesh/core.h"
+#include "runtime/scene/mesh_query.h"
 #include "runtime/scene/selection/core.h"
+#include "runtime/systems/mesh_route_system.h"
 #include <stdint.h>
 
 void sem_list_system_toggle_visibility(SceneEditorMeshListArray *array,
@@ -28,13 +28,10 @@ void sem_list_system_toggle_visibility(SceneEditorMeshListArray *array,
           Mesh *mesh = sem_list->entries[k].mesh;
 
           if (active) {
-            renderer_show_mesh(renderer, RendererDrawMode_All,
-                               RendererLayer_All, mesh);
-          }
-
-          else {
-            renderer_hide_mesh(renderer, RendererDrawMode_All,
-                               RendererLayer_All, sem_list->entries[k].mesh);
+            mesh_route_system_show_mesh(scene, renderer, mesh);
+          } else {
+            mesh_route_system_hide_mesh(scene, renderer,
+                                        sem_list->entries[k].mesh);
           }
         }
 
@@ -74,7 +71,7 @@ void sem_list_system_toggle_visibility(SceneEditorMeshListArray *array,
   void sem_system_##Label##_set_scale(const SEMTransform *desc) {}             \
                                                                                \
   void sem_list_system_##Label##_set_position(const SEMListTransform *desc) {  \
-    for (size_t i = 0; i < desc->sem_list->count; i++) {                      \
+    for (size_t i = 0; i < desc->sem_list->count; i++) {                       \
       SceneEditorMesh *sem = &desc->sem_list->entries[i];                      \
       sem->transform_callback[GizmoMode_Position](&(const SEMTransform){       \
           .light_list = desc->light_list,                                      \
@@ -361,10 +358,11 @@ void sem_system_probe_reflection_grid_set_scale_(const SEMTransform *desc) {
 void sem_system_probe_reflection_plane_update_mesh_uniform(
     const SEMTransform *desc) {
 
-  RendererBatchMeshLists reflection_meshes;
-  renderer_batch_get_mesh_list_with_flags(&desc->renderer->batches,
-                                          RendererBatchFlag_Reflection,
-                                          &reflection_meshes);
+  MeshRefList reflection_meshes;
+  // FIXME
+  // renderer_query_meshes_with_flags(&desc->renderer->batches,
+  //                                RendererMeshFlag_Reflection,
+  //                                &reflection_meshes);
 
   ProbeReflectionPlane *probe = (ProbeReflectionPlane *)desc->sem->target;
   UBOManager *ubo = desc->ubo;
@@ -385,10 +383,12 @@ void sem_system_probe_reflection_plane_update_mesh_uniform(
 
       if (intersect) {
         mesh_uniform_set_probe_reflection_plane(pipeline_mesh, ubo);
-        render_pass_disable_mesh(&probes->reflection_plane.pass, pipeline_mesh);
+        // FIXME mesh_route_system_hide_mesh(desc->, desc->renderer,
+        // pipeline_mesh);
       } else {
         mesh_uniform_clear_probe_reflection_plane(pipeline_mesh, ubo);
-        render_pass_enable_mesh(&probes->reflection_plane.pass, pipeline_mesh);
+        // FIXME render_pass_enable_mesh(&probes->reflection_plane.pass,
+        // pipeline_mesh);
       }
     }
   }

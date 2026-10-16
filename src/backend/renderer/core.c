@@ -11,7 +11,6 @@
 #include "backend/logger.h"
 #include "backend/postfx/core.h"
 #include "backend/profiler.h"
-#include "backend/renderer/batch.h"
 #include "backend/renderer/render_pass/core.h"
 #include "backend/renderer/render_pass/texture.h"
 #include "backend/renderer/shadow_map/draw.h"
@@ -41,6 +40,7 @@ static inline void renderer_pass_layout_from_batch(Renderer *,
                                                    renderer_draw_lists);
 
 static inline void renderer_pass_create(Renderer *, renderer_draw_lists);
+
 
 void renderer_create(Renderer *renderer, const RendererCreateDescriptor *desc) {
 
@@ -77,10 +77,8 @@ void renderer_create_layouts(Renderer *renderer) {
 
 /**
    Initialize scene mesh pool as well as pipelines
- */
+ */ 
 void renderer_mesh_list_init(Renderer *rd) {
-
-  renderer_batch_init(&rd->batches, 31);
 
   for (RendererMeshStates m = 0; m < RENDERER_MESH_STATE_COUNT; m++)
     mesh_ref_list_create(renderer_mesh_state(rd, m),
@@ -319,9 +317,6 @@ void renderer_update_pass_texture(
 void renderer_pass_layout_from_batch(Renderer *renderer,
                                      renderer_draw_lists draw_lists) {
 
-  RendererBatchKeyList config_keys;
-  renderer_batch_get_configuration_keys(&config_keys);
-
   // create a draw list configuration for each draw mode (Solid, Wireframe...)
   // and each layer (Default, Outline & Gizmo)
   static const struct {
@@ -335,14 +330,15 @@ void renderer_pass_layout_from_batch(Renderer *renderer,
       [ RendererDrawMode_Boundbox  ]  =   { MeshShader_Wireframe,   mesh_topology_boundbox   },
       // clang-format on
   };
+  
 
   for (uint8_t mode = 0; mode < RENDERER_DRAW_MODE_COUNT; mode++) {
 
     for (uint8_t layer = 0; layer < RENDERER_LAYER_COUNT; layer++) {
 
-      for (size_t k = 0; k < config_keys.count; k++) {
+      for (size_t k = 0; k < RendererMeshPreset_COUNT; k++) {
 
-        const RendererBatchKey *key = config_keys.entries[k];
+        const RendererMeshConfig *key = &RENDERER_MESH_CONFIG_PRESET[k];
 
         // skip if not in current layer or draw mode
         if (key->layer != (1 << layer) || (key->draw_mode & (1 << mode)) == 0)
@@ -351,8 +347,8 @@ void renderer_pass_layout_from_batch(Renderer *renderer,
         // edge case for Fixed mesh that always draw 'texture shader' and
         // 'base topology' no matter the renderer mode
         const RendererDrawMode target_mode =
-            (RendererBatchFlag_Fixed & key->flags) ? RendererDrawMode_Texture
-                                                   : (1 << mode);
+            (RendererMeshFlag_Fixed & key->flags) ? RendererDrawMode_Texture
+                                                  : (1 << mode);
 
         const size_t count = draw_lists[mode][layer].count;
 
@@ -361,8 +357,6 @@ void renderer_pass_layout_from_batch(Renderer *renderer,
             .shader = draw_mode_attributes[target_mode].shader,
             .topology_callback =
                 draw_mode_attributes[target_mode].topology_callback,
-            .meshes =
-                renderer_batch_get_mesh_list_from_key(&renderer->batches, key),
             .mesh_preprocessor_callback = NULL,
             .mesh_preprocessor_data = NULL,
         };
@@ -565,7 +559,7 @@ void renderer_pass_create(Renderer *renderer, renderer_draw_lists draw_lists) {
     RenderPass *last_pass =
         render_pass_list_insert_pass(&pass_list[mode], &gizmo_pass);
 
-    /**
+    /*
 
        ▗▄▄▖  ▗▄▖  ▗▄▄▖▗▄▄▄▖    ▗▄▄▄▖▗▖  ▗▖
        ▐▌ ▐▌▐▌ ▐▌▐▌     █      ▐▌    ▝▚▞▘
@@ -617,3 +611,4 @@ void renderer_pass_create(Renderer *renderer, renderer_draw_lists draw_lists) {
     }
   }
 }
+

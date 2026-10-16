@@ -1,14 +1,12 @@
 #include "add.h"
 #include "backend/logger.h"
-#include "backend/renderer/batch.h"
 #include "backend/renderer/core.h"
+#include "backend/renderer/mesh_build.h"
 #include "backend/renderer/reflection/draw.h"
 #include "backend/renderer/render_pass/core.h"
-#include "backend/renderer/render_pass/visibility.h"
 #include "backend/renderer/shadow_map/draw.h"
 #include "backend/resource_manager.h"
 #include "backend/std_pipeline/core.h"
-#include "runtime/engine/build.h"
 #include "runtime/engine/core.h"
 #include "runtime/mesh/core.h"
 #include "runtime/mesh/ref_list.h"
@@ -16,55 +14,74 @@
 #include "runtime/pipeline/render.h"
 #include "runtime/scene/add.h"
 #include "runtime/scene/core.h"
+#include "runtime/scene/mesh_cache.h" // ASSUMED path (scene_mesh_cache_refresh_all)
+#include "runtime/scene/mesh_query.h"
 #include "runtime/scene/selection/core.h"
 #include "runtime/scene/stat.h"
-#include "runtime/systems/visibility_system.h"
+#include "runtime/systems/mesh_route_system.h"
 #include <stdint.h>
 
-static inline void engine_scene_add_sem(Engine *, SceneEditorMeshList *);
+static void engine_scene_add_sem(Engine *, SceneEditorMeshList *);
 
-static inline void engine_enable_mesh_in_passes(Engine *, Mesh *,
-                                                const RenderPipelineType);
+static EngineStatus engine_add_mesh_core(Engine *, Mesh *, const char *,
+                                         const RendererMeshConfig *,
+                                         const EngineAddFlag);
 
-static inline void engine_add_mesh_core(Engine *, Mesh *, const char *,
-                                        const RendererBatchKey *,
-                                        const EngineAddFlag);
+static void engine_update_shadow_maps(Engine *);
 
 Scene *engine_add_scene(Engine *engine, const SceneCreateDescriptor *desc) {
 
   if (engine->scenes.count >= ENGINE_SCENE_CAPACITY) {
     logger_add(LoggerFlag_Error, "Engine reached max scene capacity (%lu)",
-               ENGINE_SCENE_CAPACITY);
+               (unsigned long)ENGINE_SCENE_CAPACITY);
     return NULL;
   }
 
   Scene *scene = rem_new_scene();
-  scene_create(scene, desc);
 
   if (!scene) {
     logger_add(LoggerFlag_Error,
-               "Resource manager unable to provide a new scene.",
-               ENGINE_SCENE_CAPACITY);
+               "Resource manager unable to provide a new scene.");
     return NULL;
   }
 
+  scene_create(scene, desc);
   engine->scenes.entries[engine->scenes.count++] = scene;
 
   return scene;
 }
 
+// === Shadow ===
+
 /**
-  Update passes draw list (sync with their respective scene pipeline)
+   Redraw the shadow maps from every mesh that has the Shadow flag. Called once
+   per add/remove (never per mesh), and only in Texture draw mode, which is the
+   only one that displays shadows.
+
+   The scene cache must be up to date before calling (mesh_route_system_
+   update_mesh / scene_mesh_cache_refresh_all).
  */
-void engine_enable_mesh_in_passes(Engine *engine, Mesh *mesh,
-                                  const RenderPipelineType pipeline) {
+void engine_update_shadow_maps(Engine *engine) {
 
   Scene *scene = engine_get_active_scene(engine);
   Renderer *renderer = engine_get_renderer(engine);
 
-  visibility_system_show_mesh(scene, renderer, mesh);
-  scene_stat_update_draw_call_count(scene, 0);
-  scene_stat_update_vertex_count(scene, 0);
+  if (renderer->draw_mode != RendererDrawMode_Texture)
+    return;
+
+  const MeshRefList *shadow_meshes = NULL;
+  if (scene_mesh_query_with_flags(scene, RendererMeshFlag_Shadow,
+                                  &shadow_meshes) !=
+      SceneMeshCacheStatus_Success)
+    return;
+
+  renderer_draw_shadow_map_all(
+      &(ShadowMapDrawAllDescriptor){
+          .mesh_list = shadow_meshes,
+          .lights = &scene->lights,
+          .profiler = &renderer->profiler,
+      },
+      SCENE_DEBUG_UNDEFINED);
 }
 
 // === Add Light ===
@@ -91,7 +108,7 @@ SceneEditorMeshList *engine_scene_add_point_light(Engine *engine,
     renderer_draw_shadow_map_point_light(
         &(ShadowMapDrawPointLightDescriptor){
             .light = light,
-            .pass = &scene->lights.point.shadow.pass,
+            .pass = &shadow_list->pass,
             .texture_layer = shadow_list->count,
             .command_encoder = NULL,
             .profiler = &renderer->profiler,
@@ -117,7 +134,7 @@ SceneEditorMeshList *engine_scene_add_spot_light(Engine *engine,
       scene_add_spot_light(scene, desc, flag, &light);
 
   if (dest)
-    light = *dest;
+    *dest = light; // was `light = *dest` (reversed)
 
   if ((flag & LightCreateFlag_Shadow) &&
       renderer_draw_mode(renderer) == RendererDrawMode_Texture) {
@@ -222,10 +239,14 @@ engine_scene_add_probe_reflection_plane(Engine *engine,
     if (data != NULL) {
       data->list = &scene->probes.reflection_plane;
       data->renderer = renderer;
-    }
 
-    renderer_add_draw_callback(renderer, renderer_draw_plane_reflection,
-                               (void *)data, RendererDrawMode_Texture);
+      renderer_add_draw_callback(renderer, renderer_draw_plane_reflection,
+                                 (void *)data, RendererDrawMode_Texture);
+    } else {
+      // never register the callback with NULL data: it would crash on draw
+      logger_add(LoggerFlag_Error,
+                 "Unable to allocate plane reflection draw data.");
+    }
   }
 
   SceneEditorMeshList *sem_list =
@@ -265,7 +286,6 @@ SceneEditorMeshList *engine_scene_add_camera(Engine *engine,
 void engine_scene_add_sem(Engine *engine, SceneEditorMeshList *list) {
 
   Scene *scene = engine_get_active_scene(engine);
-  Renderer *renderer = engine_get_renderer(engine);
 
   for (size_t i = 0; i < list->count; i++) {
     Mesh *mesh = list->entries[i].mesh;
@@ -273,8 +293,8 @@ void engine_scene_add_sem(Engine *engine, SceneEditorMeshList *list) {
     engine_scene_add_mesh_custom(
         engine, mesh, NULL,
         // default configuration for Scene Editor Meshes
-        &(RendererBatchKeyDescriptor){
-            .flags = RendererBatchFlag_Fixed,
+        &(RendererMeshConfigDescriptor){
+            .flags = RendererMeshFlag_Fixed,
             .layer = RendererLayer_Default,
             .pipeline = std_render_pipeline_type(
                 (*mesh_shader(mesh, MeshShader_Texture)->pipeline)),
@@ -296,217 +316,180 @@ void engine_scene_add_sem(Engine *engine, SceneEditorMeshList *list) {
 
 // === Add Mesh ===
 
-static inline void
-engine_add_mesh_core_insert_pipeline_batch(Engine *, Mesh *,
-                                           const RenderPipelineType);
+/**
+   Single entry point for adding a mesh. The mesh owns its render config, the
+   scene owns the mesh list, and everything else is derived:
 
-static inline void engine_add_mesh_core_insert_shadow_batch(Engine *, Mesh *);
+     1. config   -> written on the mesh (Hidden flag if added hidden)
+     2. scene    -> mesh added to the scene
+     3. build    -> shaders/buffers (must precede routing: draw packets copy
+                    buffers and bindgroups from the built shader)
+     4. route    -> scene cache refresh + insertion in the matching layouts
+     5. shadow   -> shadow maps redrawn once, if the mesh casts shadows
+     6. editor   -> selection registration + GUI tree
 
-static inline void
-engine_add_mesh_core_insert_selection_batch(Engine *, Mesh *,
-                                            const SceneSelectionType);
-
-void engine_add_mesh_core_insert_pipeline_batch(
-    Engine *engine, Mesh *mesh, const RenderPipelineType pipeline) {
-
-  Renderer *renderer = engine_get_renderer(engine);
-
-  RendererBatchMeshLists mesh_lists;
-  renderer_batch_get_mesh_list_from_pipeline(&renderer->batches, pipeline,
-                                             &mesh_lists);
-
-  // insert mesh in each batch that have this pipeline type
-  for (size_t i = 0; i < mesh_lists.count; i++)
-    mesh_ref_list_insert(mesh_lists.entries[i], mesh);
-}
-
-void engine_add_mesh_core_insert_shadow_batch(Engine *engine, Mesh *mesh) {
+   Note there is no per-batch/per-shader insertion anymore: the router derives
+   the layouts of each draw mode from the mesh config and its own shaders.
+ */
+EngineStatus engine_add_mesh_core(Engine *engine, Mesh *mesh, const char *layer,
+                                  const RendererMeshConfig *config,
+                                  const EngineAddFlag flag) {
 
   Scene *scene = engine_get_active_scene(engine);
   Renderer *renderer = engine_get_renderer(engine);
+  JobSystem *job_system = engine_get_job_system(engine);
 
-  RendererBatchMeshLists shadow_mesh_lists;
-  renderer_batch_get_mesh_list_from_pipeline(
-      &renderer->batches, RenderPipelineType_Shadow, &shadow_mesh_lists);
+  /*
+     CONFIG:
+     the mesh owns its config. "Hide" is just the Hidden flag, so a mesh added
+     hidden is simply never routed.
+   */
+  RendererMeshConfig mesh_config = *config;
+  if (flag & EngineAddFlag_Hide)
+    mesh_config.flags |= RendererMeshFlag_Hidden;
 
-  for (size_t i = 0; i < shadow_mesh_lists.count; i++) {
+  mesh_set_render_config(mesh, &mesh_config);
 
-    mesh_ref_list_insert(shadow_mesh_lists.entries[i], mesh);
-
-    // eventually trigger de draw shadow to update scene shadow
-    if (renderer->draw_mode == RendererDrawMode_Texture) {
-      renderer_draw_shadow_map_all(
-          &(ShadowMapDrawAllDescriptor){
-              .mesh_list = shadow_mesh_lists.entries[i],
-              .lights = &scene->lights,
-              .profiler = &renderer->profiler,
-          },
-          SCENE_DEBUG_UNDEFINED);
-    }
+  /*
+     SCENE:
+     add to the scene mesh list.
+   */
+  if (scene_add_mesh(scene, mesh, layer) != SceneStatus_Success) { // ASSUMED
+    logger_add(LoggerFlag_Error, "Unable to add mesh '%s' to the scene.",
+               mesh->name);
+    return EngineStatus_UnfoundEntity; // ASSUMED: use your generic error
   }
-}
-
-void engine_add_mesh_core_insert_selection_batch(
-    Engine *engine, Mesh *mesh, const SceneSelectionType selection_type) {
-
-  Scene *scene = engine_get_active_scene(engine);
-  Renderer *renderer = engine_get_renderer(engine);
-
-  scene_selection_register_mesh(&scene->selection, mesh, mesh->id,
-                                selection_type);
-
-  // add to "selection" batch meshes list (stencil & outline) so we can
-  // enable them on hightlight.
-  if (SceneSelectionType_Mesh == selection_type ||
-      SceneSelectionType_MeshShadow == selection_type) {
-
-    RendererBatchMeshLists selection_lists;
-    renderer_batch_get_mesh_list_with_flags(
-        &renderer->batches, RendererBatchFlag_Selection, &selection_lists);
-
-    for (size_t i = 0; i < selection_lists.count; i++)
-      mesh_ref_list_insert(selection_lists.entries[i], mesh);
-  }
-}
-
-void engine_add_mesh_core(Engine *engine, Mesh *mesh, const char *layer,
-                          const RendererBatchKey *batch,
-                          const EngineAddFlag flag) {
-
-  Scene *scene = engine_get_active_scene(engine);
-  Renderer *renderer = engine_get_renderer(engine);
-  SceneSelectionType selection_type = SceneSelectionType_Mesh;
 
   /*
      LAYER:
-     add to scene layers ('Default' layer if NULL)
-  */
+     add to scene layers ('Default' layer if NULL).
+     (Delete if scene_add_mesh already does it.)
+   */
   scene_layer_set_insert_mesh(&scene->layers,
                               layer ? layer : SCENE_LAYER_DEFAULT, mesh);
 
   /*
-     PIPELINE:
-     insert the mesh in each renderer batch that have the same pipeline as the
-     provided one.
+     BUILD:
+     shaders, buffers, bindgroups. Must be done before routing.
    */
-  engine_add_mesh_core_insert_pipeline_batch(engine, mesh, batch->pipeline);
+  renderer_build_mesh(renderer, scene, job_system, mesh, config->flags);
+
+  /*
+     ROUTE:
+     refresh the scene cache and insert the mesh in the layouts that accept it
+     (does nothing if Hidden). Also updates the scene counts.
+   */
+  mesh_route_system_update_mesh(scene, renderer, mesh);
 
   /*
      SHADOW:
-     if batch has a shadow flag, it means we need to insert the mesh in
-     the batch that owns all the 'shadowable' meshes.
+     the mesh casts shadows, so redraw the shadow maps (once, after routing).
    */
-  if ((batch->flags & RendererBatchFlag_Shadow)) {
-    engine_add_mesh_core_insert_shadow_batch(engine, mesh);
+  SceneSelectionType selection_type = SceneSelectionType_Mesh;
+  if (mesh_config.flags & RendererMeshFlag_Shadow) {
+    engine_update_shadow_maps(engine);
     selection_type = SceneSelectionType_MeshShadow;
   }
 
   /*
-     VISIBILITY:
-     Actually enable and show the mesh in each batch that share this pipeline
-  */
-  if ((EngineAddFlag_Hide & flag) == 0)
-    engine_enable_mesh_in_passes(engine, mesh, batch->pipeline);
-
-  /*
      [EDITORONLY] SELECTION:
-     register mesh to the selection system so it can be
-     detected with raycast and be highlighted with the right callback.
+     register the mesh to the selection system so it can be detected with
+     raycast. Highlighting later toggles RendererMeshFlag_Selection on the mesh
+     followed by mesh_route_system_update_mesh.
    */
   if ((EngineAddFlag_Unselectable & flag) == 0)
-    engine_add_mesh_core_insert_selection_batch(engine, mesh, selection_type);
+    scene_selection_register_mesh(&scene->selection, mesh, mesh->id,
+                                  selection_type);
 
   /*
      [EDITORONLY] TREE:
      Add the mesh to the GUI tree
-  */
+   */
   if (engine_get_gui(engine) && (flag & EngineAddFlag_TreeHide) == 0 &&
       mesh->parent == NULL)
     gui_tree_insert(&engine_get_gui(engine)->tree, mesh->id);
+
+  return EngineStatus_Success;
 }
 
 /*
-   Automatically map renderer pipeline based on mesh pso pointer
+   Automatically map the renderer config from the mesh Texture shader pipeline.
+   The pipelines of the other draw modes (solid/wireframe/boundbox) are derived
+   by the router from the mesh's own shaders, so one add is enough.
  */
 EngineStatus engine_scene_add_mesh(Engine *engine, Mesh *mesh,
                                    const char *layer,
                                    const EngineAddFlag flag) {
 
-  Scene *scene = engine_get_active_scene(engine);
-  SceneStatus add_result = scene_add_mesh(scene, mesh, layer);
-
-  static const MeshShader dynamic_shaders[] = {
-      MeshShader_Texture,
-      MeshShader_Solid,
-      MeshShader_Wireframe,
-  };
-  static const uint8_t dynamic_shaders_count =
-      sizeof(dynamic_shaders) / sizeof(dynamic_shaders[0]);
-
-  // For dynamic objects we manually add them to the solid/wireframe/boundbox
-  // batch so they get drawn during those mode.
-  for (uint8_t i = 0; i < dynamic_shaders_count; i++) {
-
-    const RenderPipelineType pipeline = std_render_pipeline_type(
-        *mesh_shader(mesh, dynamic_shaders[i])->pipeline);
-
-    const RendererBatchKey *batch_config =
-        renderer_batch_get_key_from_pipeline(pipeline);
-
-    // only build mesh once
-    if (i == 0) {
-      engine_build_mesh(engine, mesh, batch_config->flags);
-      engine_add_mesh_core(engine, mesh, layer, batch_config, flag);
-    } else {
-      // only add them to the pass list (do not add them to tree etc...)
-      engine_add_mesh_core(engine, mesh, layer, batch_config,
-                           flag | EngineAddFlag_TreeHide |
-                               EngineAddFlag_Unselectable);
-    }
-
-    // exit after applying the Texture for fixed mesh (since they won't change
-    // shaders on different draw mode)
-    if (batch_config->flags & RendererBatchFlag_Fixed)
-      break;
-  }
-
-  return EngineStatus_Success;
-}
-
-/*
-  Manually Define the mesh Renderer Batch configuration
- */
-EngineStatus
-engine_scene_add_mesh_custom(Engine *engine, Mesh *mesh, const char *layer,
-                             const RendererBatchKeyDescriptor *batch,
-                             const EngineAddFlag flag) {
-
-  Scene *scene = engine_get_active_scene(engine);
-  SceneStatus add_result = scene_add_mesh(scene, mesh, layer);
-
-  // get source batch from descriptor
-  const RendererBatchKey *source_batch =
-      renderer_batch_get_key_from_descriptor(batch);
-
-  if (source_batch == NULL) {
+  Shader *shader = mesh_shader(mesh, MeshShader_Texture);
+  if (shader == NULL) {
     logger_add(LoggerFlag_Error,
-               "Unable to locate the configured batch for mesh '%s', make sure "
-               "the batch configuration matches with one in the configuration.",
+               "Unable to add mesh '%s': it has no Texture shader.",
                mesh->name);
     return EngineStatus_UnfoundEntity;
   }
 
-  engine_build_mesh(engine, mesh, source_batch->flags);
-  engine_add_mesh_core(engine, mesh, layer, source_batch, flag);
+  const RenderPipelineType pipeline =
+      std_render_pipeline_type(*shader->pipeline);
 
-  return EngineStatus_Success;
+  const RendererMeshConfig *config =
+      renderer_mesh_config_from_pipeline(pipeline);
+  if (config == NULL) {
+    logger_add(LoggerFlag_Error,
+               "Unable to add mesh '%s': no mesh config matches its pipeline.",
+               mesh->name);
+    return EngineStatus_UnfoundEntity;
+  }
+
+  return engine_add_mesh_core(engine, mesh, layer, config, flag);
+}
+
+/*
+  Manually Define the mesh Renderer config. The descriptor is still looked up
+  among the presets, because the layouts are generated from them: a config
+  outside the presets would be routed to no layout.
+ */
+EngineStatus
+engine_scene_add_mesh_custom(Engine *engine, Mesh *mesh, const char *layer,
+                             const RendererMeshConfigDescriptor *desc,
+                             const EngineAddFlag flag) {
+
+  // validate BEFORE touching the scene
+  const RendererMeshConfig *config = renderer_mesh_config_from_descriptor(desc);
+
+  if (config == NULL) {
+    logger_add(LoggerFlag_Error,
+               "Unable to locate the configured preset for mesh '%s', make "
+               "sure the configuration matches with one in the presets.",
+               mesh->name);
+    return EngineStatus_UnfoundEntity;
+  }
+
+  return engine_add_mesh_core(engine, mesh, layer, config, flag);
 }
 
 // === Remove Mesh ===
+
+/**
+   The layouts hold draw packets that point to the mesh (and to its buffers and
+   bindgroups), so a mesh must be unrouted from every layout BEFORE it is
+   removed from the scene and destroyed.
+ */
 EngineStatus engine_scene_remove_mesh(Engine *engine, Mesh *mesh) {
 
   Scene *scene = engine_get_active_scene(engine);
+  Renderer *renderer = engine_get_renderer(engine);
+
+  const bool casts_shadow =
+      (mesh->render_config.flags & RendererMeshFlag_Shadow) != 0;
+
+  mesh_route_system_unroute_mesh(scene, renderer, mesh);
   scene_remove_mesh(scene, mesh);
+
+  if (casts_shadow) {
+    scene_mesh_cache_refresh_all(&scene->mesh_cache);
+    engine_update_shadow_maps(engine);
+  }
 
   return EngineStatus_Success;
 }
@@ -515,7 +498,21 @@ EngineStatus engine_scene_remove_mesh_ref_list(Engine *engine,
                                                MeshRefList *list) {
 
   Scene *scene = engine_get_active_scene(engine);
+  Renderer *renderer = engine_get_renderer(engine);
+
+  bool casts_shadow = false;
+  for (size_t i = 0; i < list->count; i++) {
+    Mesh *mesh = list->entries[i];
+    casts_shadow |= (mesh->render_config.flags & RendererMeshFlag_Shadow) != 0;
+    mesh_route_system_unroute_mesh(scene, renderer, mesh);
+  }
+
   scene_remove_mesh_ref_list(scene, list);
+
+  if (casts_shadow) {
+    scene_mesh_cache_refresh_all(&scene->mesh_cache);
+    engine_update_shadow_maps(engine);
+  }
 
   return EngineStatus_Success;
 }

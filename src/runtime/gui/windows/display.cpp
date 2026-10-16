@@ -9,7 +9,7 @@
 #include "runtime/scene/core.h"
 #include "runtime/systems/scene_editor_mesh_system.h"
 #include "runtime/systems/scene_system.h"
-#include "runtime/systems/visibility_system.h"
+#include "runtime/systems/mesh_route_system.h"
 
 int UI::Display::state = DisplayState_Activity | DisplayState_Grid |
                          DisplayState_Layout | DisplayState_Light |
@@ -79,9 +79,9 @@ void UI::Display::checkbox_on_change_grid(Scene *scene, Renderer *renderer,
   checkbox_update_state(active, target);
 
   if (active)
-    visibility_system_show_mesh(scene, renderer, scene->grid);
+    mesh_route_system_show_mesh(scene, renderer, scene->grid);
   else
-    visibility_system_hide_mesh(scene, renderer, scene->grid);
+    mesh_route_system_hide_mesh(scene, renderer, scene->grid);
 }
 
 void UI::Display::draw() {

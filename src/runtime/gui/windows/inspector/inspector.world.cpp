@@ -1,5 +1,4 @@
 #include "inspector.world.hpp"
-#include "backend/renderer/batch.h"
 #include "backend/renderer/reflection/core.h"
 #include "backend/renderer/shadow_map/core.h"
 #include "backend/renderer/shadow_map/draw.h"
@@ -13,6 +12,7 @@
 #include "runtime/mesh/core.h"
 #include "runtime/pipeline/render.h"
 #include "runtime/scene/core.h"
+#include "runtime/scene/mesh_query.h"
 #include "runtime/shader/update.h"
 #include "runtime/texture/core.h"
 #include "utils/name.h"
@@ -96,26 +96,23 @@ void UI::WorldTab::on_resolution_change_point_light(
     Scene *scene, Renderer *renderer, const TextureResolution resolution) {
 
   // update each lit shadowed mesh view
-  RendererBatchMeshLists shadow_meshes;
-  renderer_batch_get_mesh_list_with_flags(
-      &renderer->batches, RendererBatchFlag_Shadow, &shadow_meshes);
+  const MeshRefList *shadow_meshes;
+  scene_mesh_query_with_flags(scene, RendererMeshFlag_Shadow, &shadow_meshes);
 
   RenderPass *pass = &scene->lights.point.shadow.pass;
   shadow_pass_update_resolution(pass, resolution,
                                 WGPUTextureViewDimension_CubeArray);
 
   // update each mesh bound shadow view
-  for (size_t i = 0; i < shadow_meshes.count; i++) {
-    for (size_t j = 0; j < shadow_meshes.entries[i]->count; j++) {
-      Mesh *mesh = shadow_meshes.entries[i]->entries[j];
-      Shader *shader = mesh_shader(mesh, MeshShader_Texture);
-      const PipelineBindingLightList *binding =
-          shader_pipeline(shader)->bindings.light_list;
+  for (size_t j = 0; j < shadow_meshes->count; j++) {
+    Mesh *mesh = shadow_meshes->entries[j];
+    Shader *shader = mesh_shader(mesh, MeshShader_Texture);
+    const PipelineBindingLightList *binding =
+        shader_pipeline(shader)->bindings.light_list;
 
-      shader_update_texture_view(shader, binding->group, binding->point_texture,
-                                 pass->depth.attachment.view,
-                                 SHADOW_DEPTH_FORMAT, ShaderUpdateFlag_None);
-    }
+    shader_update_texture_view(shader, binding->group, binding->point_texture,
+                               pass->depth.attachment.view, SHADOW_DEPTH_FORMAT,
+                               ShaderUpdateFlag_None);
   }
 
   // redraw lights with new resolution
@@ -136,27 +133,24 @@ void UI::WorldTab::on_resolution_change_dir_light(
     Scene *scene, Renderer *renderer, const TextureResolution resolution) {
 
   // update each lit shadowed mesh view
-  RendererBatchMeshLists shadow_meshes;
-  renderer_batch_get_mesh_list_with_flags(
-      &renderer->batches, RendererBatchFlag_Shadow, &shadow_meshes);
+  const MeshRefList *shadow_meshes;
+  scene_mesh_query_with_flags(scene, RendererMeshFlag_Shadow, &shadow_meshes);
 
   RenderPass *pass = &scene->lights.spot.shadow.pass;
   shadow_pass_update_resolution(pass, resolution,
                                 WGPUTextureViewDimension_2DArray);
 
   // update each mesh bound shadow view
-  for (size_t i = 0; i < shadow_meshes.count; i++) {
-    for (size_t j = 0; j < shadow_meshes.entries[i]->count; j++) {
-      Mesh *mesh = shadow_meshes.entries[i]->entries[j];
-      Shader *shader = mesh_shader(mesh, MeshShader_Texture);
-      const PipelineBindingLightList *binding =
-          shader_pipeline(shader)->bindings.light_list;
+  for (size_t j = 0; j < shadow_meshes->count; j++) {
+    Mesh *mesh = shadow_meshes->entries[j];
+    Shader *shader = mesh_shader(mesh, MeshShader_Texture);
+    const PipelineBindingLightList *binding =
+        shader_pipeline(shader)->bindings.light_list;
 
-      shader_update_texture_view(shader, binding->group,
-                                 binding->directional_texture,
-                                 pass->depth.attachment.view,
-                                 SHADOW_DEPTH_FORMAT, ShaderUpdateFlag_None);
-    }
+    shader_update_texture_view(shader, binding->group,
+                               binding->directional_texture,
+                               pass->depth.attachment.view, SHADOW_DEPTH_FORMAT,
+                               ShaderUpdateFlag_None);
   }
 
   // redraw lights with new resolution
@@ -191,23 +185,21 @@ void UI::WorldTab::on_resolution_change_plane_reflection(
       &scene->probes.reflection_plane.pass, resolution,
       WGPUTextureViewDimension_2DArray);
 
-  RendererBatchMeshLists reflection_meshes;
-  renderer_batch_get_mesh_list_with_flags(
-      &renderer->batches, RendererBatchFlag_Shadow, &reflection_meshes);
+  const MeshRefList *reflection_meshes;
+  scene_mesh_query_with_flags(scene, RendererMeshFlag_Shadow,
+                              &reflection_meshes);
 
   // update each lit mesh reflection view
-  for (size_t j = 0; j < reflection_meshes.count; j++) {
-    for (size_t k = 0; k < reflection_meshes.entries[j]->count; k++) {
 
-      Mesh *mesh = reflection_meshes.entries[j]->entries[k];
-      Shader *shader = mesh_shader(mesh, MeshShader_Texture);
-      const PipelineBindingProbe *binding =
-          shader_pipeline(shader)->bindings.probe;
+  for (size_t k = 0; k < reflection_meshes->count; k++) {
+    Mesh *mesh = reflection_meshes->entries[k];
+    Shader *shader = mesh_shader(mesh, MeshShader_Texture);
+    const PipelineBindingProbe *binding =
+        shader_pipeline(shader)->bindings.probe;
 
-      shader_update_texture_view(
-          shader, binding->group, binding->reflection_plane_texture,
-          scene->probes.reflection_plane.pass.color.attachment.view,
-          TEXTURE_FORMAT_OFFSCREEN, ShaderUpdateFlag_None);
-    }
+    shader_update_texture_view(
+        shader, binding->group, binding->reflection_plane_texture,
+        scene->probes.reflection_plane.pass.color.attachment.view,
+        TEXTURE_FORMAT_OFFSCREEN, ShaderUpdateFlag_None);
   }
 }

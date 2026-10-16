@@ -1,18 +1,19 @@
 #include "selection_system.h"
-#include "backend/renderer/batch.h"
 #include "backend/renderer/core.h"
 #include "backend/renderer/render_pass/core.h"
 #include "backend/renderer/shadow_map/draw.h"
+#include "backend/std_pipeline/core.h"
 #include "runtime/camera/raycast/core.h"
 #include "runtime/gizmo/core.h"
 #include "runtime/input/core.h"
 #include "runtime/mesh/core.h"
 #include "runtime/mesh/ref_list.h"
 #include "runtime/scene/editor_mesh/core.h"
+#include "runtime/scene/mesh_query.h"
 #include "runtime/scene/selection/core.h"
 #include "runtime/scene/selection/filter.h"
 #include "runtime/systems/scene_system.h"
-#include "runtime/systems/visibility_system.h"
+#include "runtime/systems/mesh_route_system.h"
 #include <stdint.h>
 
 // clang-format off
@@ -148,10 +149,10 @@ void selection_system_toggle_mesh(SceneSelection *selection, Scene *scene,
     selection_system_update_gizmo_pos_to_selection(&scene->gizmo, selection,
                                                    scene->ubo);
 
-    visibility_system_show_mesh_ref_list(scene, renderer,
+    mesh_route_system_show_mesh_ref_list(scene, renderer,
                                          &gizmo->handles[gizmo->mode]);
   } else {
-    visibility_system_hide_mesh_ref_list(scene, renderer,
+    mesh_route_system_hide_mesh_ref_list(scene, renderer,
                                          &gizmo->handles[gizmo->mode]);
   }
 
@@ -184,88 +185,71 @@ void selection_system_toggle_mesh(SceneSelection *selection, Scene *scene,
 
  */
 
+static bool selection_contains(const SceneSelectionObjectList *list,
+                               const Mesh *mesh) {
+  for (size_t i = 0; i < list->count; i++)
+    if (list->entries[i].mesh == mesh)
+      return true;
+  return false;
+}
+
+// Line draw modes (wireframe/boundbox) show the selection as a tint on the
+// wireframe shader. Same shader for both modes, so it is written once.
+static void mesh_set_highlight_color(Mesh *mesh, const color *c) {
+  Shader *shader = mesh_shader(mesh, MeshShader_Wireframe);
+  if (shader)
+    shader_update_uniform_data(shader, 1, 0, (void *)c, ShaderUpdateFlag_None);
+}
+
 void selection_system_callback_mesh_highlight(
     SceneSelection *selection, Scene *scene, Renderer *renderer,
     SceneSelectionObjectList *selected_objects, void *data) {
 
-  SceneSelectionType target_type[2] = {
-      SceneSelectionType_Mesh,
-      SceneSelectionType_MeshShadow,
-  };
+  static const color highlight_color = {1.0f, 0.0f, 0.0f, 1.0f};
+  static const color default_color = {0.0f, 0.0f, 0.0f, 1.0f};
 
-  RendererLayer target_layers[2] = {
-      RendererLayer_Default,
-      RendererLayer_Outline,
-  };
+  // meshes currently highlighted are the ones holding the Selection flag
+  const MeshRefList *highlighted = NULL;
+  if (scene_mesh_query_with_flags(scene, RendererMeshFlag_Selection,
+                                  &highlighted) != SceneMeshCacheStatus_Success)
+    return;
 
-  const color highlight_color = {1.0f, 0.0f, 0.0f, 1.0f};
-  const color default_color = {0.0f, 0.0f, 0.0f, 1.0f};
+  MeshRefList changed;
+  if (mesh_ref_list_create(&changed, SCENE_MESH_LIST_DEFAULT_CAPACITY) !=
+      DynamicListStatus_Success)
+    return;
 
-  // enable mesh in each fixed selection of each pass (outline + stencil) in
-  // all draw modes
-  for (RendererDrawMode i = 0; i < RENDERER_DRAW_MODE_COUNT; i++) {
+  // 1. deselect. mesh_remove_flags is a pure write, so the cache list we are
+  //    iterating stays untouched until the refresh below.
+  for (size_t i = 0; i < highlighted->count; i++) {
+    Mesh *mesh = highlighted->entries[i];
 
-    RenderPassList *pass_list = &renderer->mesh_pass[i];
-    RendererBatchMeshLists selection_meshes;
-    renderer_batch_get_mesh_list_with_flags(
-        &renderer->batches, RendererBatchFlag_Selection, &selection_meshes);
+    if (selection_contains(selected_objects, mesh))
+      continue;
 
-    for (size_t j = 0; j < selection_meshes.count; j++) {
-
-      switch ((1 << i)) {
-
-        // update line effect
-      case RendererDrawMode_Boundbox:
-      case RendererDrawMode_Wireframe:
-
-        // disable all
-        for (SceneSelectionType i = 0; i < 2; i++) {
-          for (size_t j = 0; j < selection->filters[i].meshes.count; j++) {
-            Mesh *mesh = selection->filters[i].meshes.entries[j];
-            shader_update_uniform_data(mesh_shader(mesh, MeshShader_Wireframe),
-                                       1, 0, (void *)&default_color,
-                                       ShaderUpdateFlag_None);
-          }
-        }
-
-        // enable selected
-        for (size_t k = 0; k < selected_objects->count; k++) {
-          Mesh *mesh = selected_objects->entries[k].mesh;
-          shader_update_uniform_data(mesh_shader(mesh, MeshShader_Wireframe), 1,
-                                     0, (void *)&highlight_color,
-                                     ShaderUpdateFlag_None);
-        }
-
-        break;
-
-        // update outline effect
-      case RendererDrawMode_Solid:
-      case RendererDrawMode_Texture:
-
-        for (int k = 0; k < 2; k++) {
-          RenderPass *pass =
-              &pass_list->passes[__builtin_ctz(target_layers[k])];
-
-          RenderPassLayout *layout = render_pass_find_layout_from_source_list(
-              pass, selection_meshes.entries[j]);
-
-          if (layout) {
-
-            render_pass_layout_disable_all_mesh(layout);
-
-            for (size_t l = 0; l < selected_objects->count; l++) {
-              Mesh *mesh = selected_objects->entries[l].mesh;
-              render_pass_layout_enable_mesh(layout, mesh);
-            }
-          }
-
-          render_pass_sync_drawn_layouts(pass);
-        }
-        break;
-      }
+    if (mesh_remove_flags(mesh, RendererMeshFlag_Selection)) {
+      mesh_set_highlight_color(mesh, &default_color);
+      mesh_ref_list_insert(&changed, mesh);
     }
   }
-};
+
+  // 2. select
+  for (size_t i = 0; i < selected_objects->count; i++) {
+    Mesh *mesh = selected_objects->entries[i].mesh;
+    if (mesh == NULL)
+      continue;
+
+    if (mesh_add_flags(mesh, RendererMeshFlag_Selection)) {
+      mesh_set_highlight_color(mesh, &highlight_color);
+      mesh_ref_list_insert(&changed, mesh);
+    }
+  }
+
+  // 3. refresh the cache once, route the changed meshes, update the counts
+  mesh_route_system_update_mesh_ref_list(scene, renderer, &changed);
+
+  mesh_ref_list_free(&changed);
+}
 
 /**
    For SEM Object we use a OOP approach (similar to the transform callback)
@@ -397,18 +381,17 @@ void selection_system_callback_mesh_shadow_transform(
   // recalculate shadow maps
   if (desc->renderer->draw_mode == RendererDrawMode_Texture) {
 
-    RendererBatchMeshLists shadow_meshes;
-    renderer_batch_get_mesh_list_with_flags(
-        &desc->renderer->batches, RendererBatchFlag_Shadow, &shadow_meshes);
+    const MeshRefList *shadow_meshes;
+    scene_mesh_query_with_flags(desc->scene, RendererMeshFlag_Shadow,
+                                &shadow_meshes);
 
-    for (size_t i = 0; i < shadow_meshes.count; i++)
-      renderer_draw_shadow_map_all(
-          &(ShadowMapDrawAllDescriptor){
-              .mesh_list = shadow_meshes.entries[i],
-              .lights = &desc->scene->lights,
-              .profiler = &desc->renderer->profiler,
-          },
-          SCENE_DEBUG_UNDEFINED);
+    renderer_draw_shadow_map_all(
+        &(ShadowMapDrawAllDescriptor){
+            .mesh_list = shadow_meshes,
+            .lights = &desc->scene->lights,
+            .profiler = &desc->renderer->profiler,
+        },
+        SCENE_DEBUG_UNDEFINED);
   }
 }
 
@@ -658,7 +641,7 @@ void selection_system_callback_raycast_mesh(
     selection_system_toggle_mesh(selection, scene, renderer, hit->mesh);
   else {
     scene_selection_empty(selection);
-    visibility_system_hide_mesh_ref_list(scene, renderer,
+    mesh_route_system_hide_mesh_ref_list(scene, renderer,
                                          &gizmo->handles[gizmo->mode]);
 
     for (uint8_t i = 0; i < SCENE_SELECTION_TYPE_COUNT; i++)
@@ -913,13 +896,13 @@ void selection_system_callback_key_sequence_select_all(KeyRecordSequence *seq,
   // if already selection => unselect everything
   if (scene_selection_count(selection)) {
     scene_selection_empty(selection);
-    visibility_system_hide_mesh_ref_list(scene, renderer,
+    mesh_route_system_hide_mesh_ref_list(scene, renderer,
                                          &gizmo->handles[gizmo->mode]);
   } else {
     scene_selection_all(selection);
     selection_system_update_gizmo_pos_to_selection(gizmo, selection,
                                                    scene->ubo);
-    visibility_system_hide_mesh_ref_list(scene, renderer,
+    mesh_route_system_hide_mesh_ref_list(scene, renderer,
                                          &gizmo->handles[gizmo->mode]);
   }
 
@@ -950,7 +933,7 @@ void selection_system_callback_key_sequence_set_gizmo_mode(
     }
 
   // hide gizmo
-  visibility_system_hide_mesh_ref_list(scene, renderer,
+  mesh_route_system_hide_mesh_ref_list(scene, renderer,
                                        &gizmo->handles[gizmo->mode]);
 
   selection_system_update_gizmo_raycast_list(gizmo, gizmo->mode);
@@ -960,7 +943,7 @@ void selection_system_callback_key_sequence_set_gizmo_mode(
     // update location to selection average
     selection_system_update_gizmo_pos_to_selection(gizmo, selection,
                                                    scene->ubo);
-    visibility_system_hide_mesh_ref_list(scene, renderer,
+    mesh_route_system_hide_mesh_ref_list(scene, renderer,
                                          &gizmo->handles[gizmo->mode]);
   }
 }

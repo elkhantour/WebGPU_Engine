@@ -29,6 +29,7 @@
 #include "runtime/probe/reflection/grid.h"
 #include "runtime/probe/reflection/plane.h"
 #include "runtime/scene/editor_mesh/core.h"
+#include "runtime/scene/mesh_cache.h"
 #include "runtime/viewport/core.h"
 #include "utils/vector/core.h"
 #include "utils/vector/vec3_list.h"
@@ -72,6 +73,8 @@ struct Scene {
   ProbeList probes;
   MeshRefList meshes;
   SceneEditorMeshListArray editor_meshes;
+
+  SceneMeshCache mesh_cache;
 
   SceneLayerSet layers; // meshes layer (for interaction logic)
 

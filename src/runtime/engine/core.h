@@ -63,6 +63,11 @@ static inline Renderer *engine_get_renderer(Engine *engine) {
   return engine->renderer;
 }
 
+
+static inline JobSystem *engine_get_job_system(Engine *engine) {
+  return engine->job_system;
+}
+
 static inline Gui *engine_get_gui(Engine *engine) { return engine->gui; }
 
 #endif
