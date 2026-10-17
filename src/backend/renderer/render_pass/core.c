@@ -6,7 +6,7 @@
 
 #include "backend/logger.h"
 #include "backend/postfx/core.h"
-#include "backend/std_pipeline/core.h"
+#include "backend/shaders/core.h"
 #include "draw.h"
 #include "runtime/mesh/core.h"
 #include "runtime/mesh/draw.h"

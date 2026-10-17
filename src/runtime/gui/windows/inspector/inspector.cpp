@@ -3,7 +3,7 @@
 #include "backend/profiler.h"
 #include "backend/registry.h"
 #include "backend/stat.h"
-#include "backend/std_pipeline/core.h"
+#include "backend/shaders/core.h"
 #include "imgui/imgui.h"
 #include "runtime/gui/components/button_icon.hpp"
 #include "runtime/gui/components/input.hpp"

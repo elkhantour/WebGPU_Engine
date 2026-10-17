@@ -2,7 +2,7 @@
 #include "./resource_manager.h"
 #include "backend/clock.h"
 #include "backend/logger.h"
-#include "backend/std_pipeline/core.h"
+#include "backend/shaders/core.h"
 #include "backend/std_texture/core.h"
 #include "backend/theme/configs/default/default.icon.h"
 #include "backend/theme/configs/default/default.size.h"
@@ -72,7 +72,7 @@ ContextStatus context_init(const ContextDescriptor *desc) {
                                 .cell_size = {128, 128},
                                 .format = TEXTURE_FORMAT_OFFSCREEN,
                                 .label = "Scene UI Icon Atlas",
-                                .path = RESOURCES_PATH_TEXTURE(ui/icon_atlas.png),
+                                .path = RESOURCES_PATH_TEXTURE("ui/icon_atlas.png"),
                             });
 
     theme_set_icons_coordinates(&g_theme, theme_default_icon);

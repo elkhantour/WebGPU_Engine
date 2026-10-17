@@ -1,7 +1,7 @@
 #include "mesh_route_system.h"
 #include "backend/renderer/core.h"
 #include "backend/renderer/render_pass/core.h"
-#include "backend/std_pipeline/core.h"
+#include "backend/shaders/core.h"
 #include "runtime/mesh/core.h"
 #include "runtime/mesh/draw.h"
 #include "runtime/scene/mesh_cache.h"

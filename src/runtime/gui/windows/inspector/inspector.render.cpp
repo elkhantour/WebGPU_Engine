@@ -2,7 +2,7 @@
 #include "backend/postfx/core.h"
 #include "backend/renderer/core.h"
 #include "backend/renderer/render_pass/core.h"
-#include "backend/std_pipeline/core.h"
+#include "backend/shaders/core.h"
 #include "imgui/imgui.h"
 #include "runtime/gui/components/input.hpp"
 #include "runtime/gui/components/tree_item.hpp"

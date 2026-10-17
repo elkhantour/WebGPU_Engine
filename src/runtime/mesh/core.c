@@ -9,7 +9,7 @@
 
 #include "backend/logger.h"
 #include "backend/registry.h"
-#include "backend/std_pipeline/core.h"
+#include "backend/shaders/core.h"
 #include "backend/ubo.h"
 #include "runtime/pipeline/render.h"
 #include "shader/core.h"

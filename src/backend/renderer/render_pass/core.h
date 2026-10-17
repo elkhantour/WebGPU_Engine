@@ -7,7 +7,7 @@
 #include <webgpu/webgpu.h>
 
 #include "backend/postfx/core.h"
-#include "backend/std_pipeline/core.h"
+#include "backend/shaders/core.h"
 #include "runtime/mesh/core.h"
 #include "runtime/mesh/draw.h"
 #include "runtime/mesh/mesh.h"

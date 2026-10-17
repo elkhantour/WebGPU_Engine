@@ -1,6 +1,6 @@
 #include "wireframe.h"
 
-#include "backend/std_pipeline/core.h"
+#include "backend/shaders/core.h"
 #include "runtime/geometry/line/core.h"
 #include "runtime/mesh/core.h"
 #include "runtime/mesh/shader/core.h"

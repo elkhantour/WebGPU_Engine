@@ -21,7 +21,7 @@ void gizmo_rotation_create(MeshRefList *visual_list,
   Mesh *sphere = rem_new_mesh();
   Primitive sphere_primitive;
   loader_mbin_load_primitive(&(MBINLoadPrimitiveDescriptor){
-      .path = RESOURCES_PATH_MBIN(rotate_mask.mbin),
+      .path = RESOURCES_PATH_MBIN("rotate_mask.mbin"),
       .primitive = &sphere_primitive,
   });
 
@@ -36,6 +36,6 @@ void gizmo_rotation_create(MeshRefList *visual_list,
   // create axis then
   gizmo_create_handles(visual_list, interactive_list,
                        &(GizmoCreateMeshDescriptor){
-                           .mbin_path = RESOURCES_PATH_MBIN(rotate.mbin),
+                           .mbin_path = RESOURCES_PATH_MBIN("rotate.mbin"),
                        });
 }

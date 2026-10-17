@@ -5,7 +5,7 @@
 #include "backend/context.h"
 #include "backend/logger.h"
 #include "backend/resource_manager.h"
-#include "backend/std_pipeline/core.h"
+#include "backend/shaders/core.h"
 #include "runtime/engine/add.h"
 #include "runtime/mesh/core.h"
 #include "runtime/mesh/shader/core.h"

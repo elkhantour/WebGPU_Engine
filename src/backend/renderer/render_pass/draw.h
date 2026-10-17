@@ -2,7 +2,7 @@
 #define _RENDER_PASS_DRAW_H_
 
 #include "backend/resource_manager.h"
-#include "backend/std_pipeline/core.h"
+#include "backend/shaders/core.h"
 #include "core.h"
 #include "webgpu/webgpu.h"
 

@@ -2,7 +2,7 @@
 #include "backend/renderer/core.h"
 #include "backend/renderer/render_pass/core.h"
 #include "backend/renderer/shadow_map/draw.h"
-#include "backend/std_pipeline/core.h"
+#include "backend/shaders/core.h"
 #include "runtime/camera/raycast/core.h"
 #include "runtime/gizmo/core.h"
 #include "runtime/input/core.h"

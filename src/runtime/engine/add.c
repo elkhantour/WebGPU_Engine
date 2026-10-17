@@ -6,7 +6,7 @@
 #include "backend/renderer/render_pass/core.h"
 #include "backend/renderer/shadow_map/draw.h"
 #include "backend/resource_manager.h"
-#include "backend/std_pipeline/core.h"
+#include "backend/shaders/core.h"
 #include "runtime/engine/core.h"
 #include "runtime/mesh/core.h"
 #include "runtime/mesh/ref_list.h"

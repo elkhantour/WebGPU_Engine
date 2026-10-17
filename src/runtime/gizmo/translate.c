@@ -2,7 +2,7 @@
 
 #include "./utils.h"
 #include "backend/resource_manager.h"
-#include "backend/std_pipeline/core.h"
+#include "backend/shaders/core.h"
 #include "core.h"
 #include "runtime/geometry/vertex/attribute.h"
 #include "runtime/mesh/core.h"
@@ -21,7 +21,7 @@ void gizmo_position_create(MeshRefList *visual_list,
 
   gizmo_create_handles(visual_list, interactive_list,
                        &(GizmoCreateMeshDescriptor){
-                           .mbin_path = RESOURCES_PATH_MBIN(translate.mbin),
+                           .mbin_path = RESOURCES_PATH_MBIN("translate.mbin"),
                            .offset = {0.0f, 0.1f, 0.0f},
                        });
 

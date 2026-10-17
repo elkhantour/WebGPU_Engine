@@ -5,7 +5,7 @@
 #include <stddef.h>
 
 #include "backend/logger.h"
-#include "backend/std_pipeline/core.h"
+#include "backend/shaders/core.h"
 #include "runtime/camera/core.h"
 #include "runtime/mesh/core.h"
 #include "runtime/mesh/shader/core.h"

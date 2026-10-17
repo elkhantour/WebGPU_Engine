@@ -3,7 +3,7 @@
 #include "backend/context.h"
 #include "backend/logger.h"
 #include "backend/resource_manager.h"
-#include "backend/std_pipeline/core.h"
+#include "backend/shaders/core.h"
 #include "runtime/shader/core.h"
 #include "runtime/texture/core.h"
 #include "webgpu/webgpu.h"

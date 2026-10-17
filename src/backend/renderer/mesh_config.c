@@ -1,7 +1,7 @@
 #include "mesh_config.h"
 #include "backend/logger.h"
 #include "backend/renderer/core.h"
-#include "backend/std_pipeline/core.h"
+#include "backend/shaders/core.h"
 #include "runtime/mesh/core.h"
 #include "runtime/mesh/ref_list.h"
 #include "runtime/pipeline/render.h"

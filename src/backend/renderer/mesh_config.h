@@ -1,7 +1,7 @@
 #ifndef _RENDERER_MESH_CONFIG_H_
 #define _RENDERER_MESH_CONFIG_H_
 
-#include "backend/std_pipeline/core.h"
+#include "backend/shaders/core.h"
 #include "runtime/pipeline/render.h"
 #include "utils/defines.h"
 #include "utils/hsht.h"

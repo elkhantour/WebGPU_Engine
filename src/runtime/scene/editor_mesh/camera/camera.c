@@ -53,7 +53,7 @@ void sem_camera_create(SceneEditorMeshList *list, Camera *camera,
   // create box mesh
   Primitive cube_primitive;
   loader_mbin_load_primitive(&(MBINLoadPrimitiveDescriptor){
-      .path = RESOURCES_PATH_MBIN(cube.mbin),
+      .path = RESOURCES_PATH_MBIN("cube.mbin"),
       .primitive = &cube_primitive,
   });
 

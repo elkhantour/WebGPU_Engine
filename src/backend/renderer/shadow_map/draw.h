@@ -23,7 +23,7 @@
 
 #include "backend/renderer/render_pass/core.h"
 #include "backend/renderer/render_pass/draw.h"
-#include "backend/std_pipeline/core.h"
+#include "backend/shaders/core.h"
 #include "core.h"
 #include "runtime/light/core.h"
 #include "runtime/light/list.h"

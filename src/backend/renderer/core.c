@@ -16,7 +16,7 @@
 #include "backend/renderer/shadow_map/draw.h"
 #include "backend/resource_manager.h"
 #include "backend/stat.h"
-#include "backend/std_pipeline/core.h"
+#include "backend/shaders/core.h"
 #include "backend/std_texture/core.h"
 #include "backend/ubo.h"
 #include "emscripten/html5.h"

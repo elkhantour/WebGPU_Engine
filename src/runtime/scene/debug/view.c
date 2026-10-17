@@ -5,7 +5,7 @@
 #include <stddef.h>
 
 #include "backend/resource_manager.h"
-#include "backend/std_pipeline/core.h"
+#include "backend/shaders/core.h"
 #include "core.h"
 #include "runtime/mesh/core.h"
 #include "runtime/mesh/list.h"

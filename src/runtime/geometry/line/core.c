@@ -5,7 +5,7 @@
 #include <stdlib.h>
 
 #include "backend/logger.h"
-#include "backend/std_pipeline/core.h"
+#include "backend/shaders/core.h"
 #include "runtime/geometry/vertex/attribute.h"
 #include "runtime/geometry/vertex/core.h"
 #include "runtime/geometry/vertex/index.h"

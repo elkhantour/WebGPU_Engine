@@ -14,7 +14,7 @@
 #include "backend/registry.h"
 #include "backend/renderer/mesh_config.h"
 #include "backend/stat.h"
-#include "backend/std_pipeline/core.h"
+#include "backend/shaders/core.h"
 #include "render_pass/core.h"
 #include "runtime/mesh/core.h"
 #include "runtime/pipeline/pipeline.h"

@@ -3,7 +3,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "backend/std_pipeline/core.h"
+#include "backend/shaders/core.h"
 #include "runtime/geometry/vertex/attribute.h"
 #include "runtime/mesh/core.h"
 #include "runtime/mesh/shader/core.h"

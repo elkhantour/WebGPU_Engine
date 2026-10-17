@@ -53,6 +53,7 @@ file(GLOB_RECURSE CGLTF
 # Create a static library for all vendors
 add_library(${PROJECT_NAME}_vendors STATIC ${IMGUI} ${CGLM} ${STB} ${CGLTF})
 
+
 # ----------------------------
 # Preprocess WGSL shaders
 # ----------------------------
@@ -64,7 +65,7 @@ set(WGSL_OUT_FILES "")
 set(WGSL_OUT_DIR "${CMAKE_BINARY_DIR}/generated_shaders")
 file(MAKE_DIRECTORY ${WGSL_OUT_DIR})
 
-file(GLOB_RECURSE WGSL_IN_FILES "${ENGINE_SRC_DIR}/backend/std_pipeline/*.wgsl.in")
+file(GLOB_RECURSE WGSL_IN_FILES "${ENGINE_SRC_DIR}/backend/shaders/*.wgsl.in")
 foreach(wgsl_in ${WGSL_IN_FILES})
 
     get_filename_component(fname ${wgsl_in} NAME_WE)
@@ -81,6 +82,49 @@ foreach(wgsl_in ${WGSL_IN_FILES})
     list(APPEND WGSL_OUT_FILES ${wgsl_out})
 endforeach()
 
+# ----------------------------
+# Preprocess Slang shaders
+# ----------------------------
+find_program(SLANGC slangc REQUIRED)
+
+# include slang modules
+set(SLANG_MODULES_DIR "${CMAKE_CURRENT_SOURCE_DIR}/${ENGINE_SRC_DIR}/backend/shaders")
+
+# compile slang main shaders
+file(GLOB_RECURSE SLANG_IN_FILES
+    CONFIGURE_DEPENDS
+    "${ENGINE_SRC_DIR}/backend/shaders/render/*.slang"
+    "${ENGINE_SRC_DIR}/backend/shaders/compute/*.slang"
+)
+
+file(GLOB_RECURSE SLANG_MODULE_FILES
+    CONFIGURE_DEPENDS
+    "${SLANG_MODULES_DIR}/*.slang"
+)
+
+foreach(slang_in IN LISTS SLANG_IN_FILES)
+
+    get_filename_component(fname "${slang_in}" NAME_WE)
+    set(wgsl_out "${WGSL_OUT_DIR}/${fname}.wgsl")
+
+    add_custom_command(
+        OUTPUT "${wgsl_out}"
+        COMMAND "${SLANGC}"
+            "-I${SLANG_MODULES_DIR}"
+            "${slang_in}"
+            -target wgsl
+            -matrix-layout-column-major
+            -o "${wgsl_out}"
+        DEPENDS
+            "${slang_in}"
+            ${SLANG_MODULE_FILES}
+        COMMENT "Compiling Slang ${slang_in} -> WGSL"
+        VERBATIM
+    )
+
+    list(APPEND WGSL_OUT_FILES "${wgsl_out}")
+endforeach()
+
 
 # ----------------------------
 # Resource routing
@@ -94,8 +138,8 @@ set(RES_SCAN_ROOTS
     "${ASSET_ROOT}/font"
     "${ASSET_ROOT}/texture"
     "${ASSET_ROOT}/mbin"
-    "${CMAKE_CURRENT_SOURCE_DIR}/${ENGINE_SRC_DIR}/backend/std_pipeline/render_shader"
-    "${CMAKE_CURRENT_SOURCE_DIR}/${ENGINE_SRC_DIR}/backend/std_pipeline/compute_shader"
+    "${CMAKE_CURRENT_SOURCE_DIR}/${ENGINE_SRC_DIR}/backend/shaders/render"
+    "${CMAKE_CURRENT_SOURCE_DIR}/${ENGINE_SRC_DIR}/backend/shaders/compute"
 )
 
 # extension (lowercase) -> virtual directory

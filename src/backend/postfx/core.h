@@ -4,9 +4,9 @@
 #include "backend/compute/core.h"
 #include "backend/compute/kawase.h"
 #include "backend/profiler.h"
-#include "backend/std_pipeline/core.h"
-#include "backend/std_pipeline/render_shader/bloom/bloom.h"
-#include "backend/std_pipeline/render_shader/composite/composite.h"
+#include "backend/shaders/core.h"
+#include "backend/shaders/include/bloom.h"
+#include "backend/shaders/include/composite.h"
 #include "runtime/pipeline/render.h"
 #include "runtime/texture/core.h"
 #include <stdint.h>

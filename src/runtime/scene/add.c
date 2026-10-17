@@ -5,7 +5,7 @@
 
 #include "backend/logger.h"
 #include "backend/registry.h"
-#include "backend/std_pipeline/core.h"
+#include "backend/shaders/core.h"
 #include "backend/ubo.h"
 #include "core.h"
 #include "debug/core.h"

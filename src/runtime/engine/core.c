@@ -9,7 +9,7 @@
 #include "backend/renderer/reflection/draw.h"
 #include "backend/renderer/shadow_map/draw.h"
 #include "backend/resource_manager.h"
-#include "backend/std_pipeline/core.h"
+#include "backend/shaders/core.h"
 #include "runtime/engine/add.h"
 #include "runtime/light/list.h"
 #include "runtime/pipeline/render.h"

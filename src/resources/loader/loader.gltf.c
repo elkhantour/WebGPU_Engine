@@ -13,8 +13,8 @@
 #include <string.h>
 
 #include "backend/logger.h"
-#include "backend/std_pipeline/core.h"
-#include "backend/std_pipeline/render_shader/pbr/pbr.h"
+#include "backend/shaders/core.h"
+#include "backend/shaders/include/pbr.h"
 #include "backend/std_texture/core.h"
 #include "runtime/geometry/vertex/attribute.h"
 #include "runtime/geometry/vertex/core.h"
