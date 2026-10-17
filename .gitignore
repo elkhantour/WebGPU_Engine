@@ -9,3 +9,4 @@ _ignore/
 wgpu_scene.js
 .cache/
 *.o
+/src/resources/assets/
